@@ -21,10 +21,9 @@ with open(_fields_yaml, "r", encoding="utf-8") as f:
     ADDRESS_FIELDS = fields["address"]
     FOREST_ROAD_FIELDS = fields["forest_road"]
 
-global URLS_2025
+global URLS
 with open(os.path.join(conf_dir, "urls.yaml"), "r", encoding="utf-8") as f:
-    urls = yaml.safe_load(f)
-    URLS_2025 = urls[2025]
+    URLS = yaml.safe_load(f)
 
 global NF_CODING
 with open(os.path.join(conf_dir, "nf_coding.yaml"), "r", encoding="utf-8") as f:
