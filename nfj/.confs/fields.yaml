@@ -3,11 +3,6 @@
 
 address:
   # 小班区画データの属性名と、変換後の属性名の対応データです。
-  ID: 
-    ja: ID
-    en: ID
-    dtype: String
-    default: "-"
   県市町村: 
     ja: 市区町村
     en: city
