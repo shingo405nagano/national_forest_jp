@@ -1,198 +1,197 @@
 # ───────────────────────────────────────────────────────────────────────────────
 # G空間センターで公開されている国有林GISデータの属性名と、変換後の属性名の対応データです。
-gs:
-  address_shp:
+
+address:
   # 小班区画データの属性名と、変換後の属性名の対応データです。
-    ID: 
-      ja: ID
-      en: ID
-      dtype: String
-      default: "-"
-    県市町村: 
-      ja: 市区町村
-      en: city
-      dtype: String
-      default: "-"
-      description: 国有林が所在する市区町村名
-    局名称: 
-      ja: 森林管理局
-      en: authority
-      dtype: String
-      default: "-"
-      description: 森林管理局の名称
-    計画区: 
-      ja: 計画区
-      en: plan_area
-      dtype: String
-      default: "-"
-      description: 計画区の名称
-    署名称: 
-      ja: 森林管理署
-      en: office
-      dtype: String
-      default: "-"
-    担当区: 
-      ja: 担当区
-      en: branch_office
-      dtype: String
-      default: "-"
-    国有林名: 
-      ja: 国有林名
-      en: locality
-      dtype: String
-      default: "-"
-    林小班名称: 
-      ja: 林小班
-      en: address
-      dtype: String
-      default: "-"
-    林班主番: 
-      ja: 林班主番
-      en: main_address
-      dtype: Integer
-      default: 0
-    林班枝番: 
-      ja: 林班枝番
-      en: main_address_2
-      dtype: Integer
-      default: 0
-    小班名: 
-      ja: 小班名
-      en: sub_address_name
-      dtype: String
-      default: "-"
-    小班枝番: 
-      ja: 小班枝番
-      en: sub_address_number
-      dtype: Integer
-      default: 0
-    材積: 
-      ja: 記載材積
-      en: source_volume
-      dtype: Float
-      default: 0.0
-    面積: 
-      ja: 記載面積
-      en: source_area
-      dtype: Float
-      default: 0.0
-    樹種１: 
-      ja: 樹種1
-      en: tree_name_1
-      dtype: String
-      default: "-"
-    樹立林齢１: 
-      ja: 樹立林齢1
-      en: tree_age_1
-      dtype: Integer
-      default: 0
-    樹種２: 
-      ja: 樹種2
-      en: tree_name_2
-      dtype: String
-      default: "-"
-    樹立林齢２: 
-      ja: 樹立林齢2
-      en: tree_age_2
-      dtype: Integer
-      default: 0
-    樹種３: 
-      ja: 樹種3
-      en: tree_name_3
-      dtype: String
-      default: "-"
-    樹立林齢３: 
-      ja: 樹立林齢3
-      en: tree_age_3
-      dtype: Integer
-      default: 0
-    林種の細分: 
-      ja: 林種の細分
-      en: forest_type_detail
-      dtype: String
-      default: "-"
-    機能類型: 
-      ja: 機能類型
-      en: forest_feature_type
-      dtype: String
-      default: "-"
-    保安林１: 
-      ja: 保安林1
-      en: protection_forest_1
-      dtype: String
-      default: "-"
-    保安林２: 
-      ja: 保安林2
-      en: protection_forest_2
-      dtype: String
-      default: "-"
-    保安林３: 
-      ja: 保安林3
-      en: protection_forest_3
-      dtype: String
-      default: "-"
-    保安林４: 
-      ja: 保安林4
-      en: protection_forest_4
-      dtype: String
-      default: "-"
-    保護林: 
-      ja: 保護林
-      en: conservation
-      dtype: String
-      default: "-"
-    緑の回廊: 
-      ja: 緑の回廊
-      en: green_corridor
-      dtype: String
-      default: "-"
-    樹立年度: 
-      ja: 樹立年度
-      en: establishment_year
-      dtype: string
-      default: "-"
-    geometry: 
-      ja: geometry
-      en: geometry
-      dtype: Geometry
-      default: null
-  forest_road_shp:
-    # 林道データの属性名と、変換後の属性名の対応データです。
-    ID: 
-      ja: ID
-      en: ID
-      dtype: String
-      default: "-"
-    森林管理局:
-      ja: 森林管理局ID
-      en: authority_id
-      dtype: String
-      default: "-"
-    森林管理署:
-      ja: 森林管理署ID
-      en: office_id
-      dtype: String
-      default: "-"
-    路線番号:
-      ja: 路線番号
-      en: route_number
-      dtype: Integer
-      default: -1
-    林道名:
-      ja: 林道名
-      en: road_name
-      dtype: String
-      default: "-"
-    geometry:
-      ja: geometry
-      en: geometry
-      dtype: Geometry
-      default: null
+  ID: 
+    ja: ID
+    en: ID
+    dtype: String
+    default: "-"
+  県市町村: 
+    ja: 市区町村
+    en: city
+    dtype: String
+    default: "-"
+    description: 国有林が所在する市区町村名
+  局名称: 
+    ja: 森林管理局
+    en: authority
+    dtype: String
+    default: "-"
+    description: 森林管理局の名称
+  計画区: 
+    ja: 計画区
+    en: plan_area
+    dtype: String
+    default: "-"
+    description: 計画区の名称
+  署名称: 
+    ja: 森林管理署
+    en: office
+    dtype: String
+    default: "-"
+  担当区: 
+    ja: 担当区
+    en: branch_office
+    dtype: String
+    default: "-"
+  国有林名: 
+    ja: 国有林
+    en: locality
+    dtype: String
+    default: "-"
+  林小班名称: 
+    ja: 林小班
+    en: address
+    dtype: String
+    default: "-"
+  林班主番: 
+    ja: 林班主番
+    en: main_address
+    dtype: Integer
+    default: 0
+  林班枝番: 
+    ja: 林班枝番
+    en: main_address_2
+    dtype: Integer
+    default: 0
+  小班名: 
+    ja: 小班名
+    en: sub_address_name
+    dtype: String
+    default: "-"
+  小班枝番: 
+    ja: 小班枝番
+    en: sub_address_number
+    dtype: Integer
+    default: 0
+  材積: 
+    ja: 記載材積
+    en: source_volume
+    dtype: Float
+    default: 0.0
+  面積: 
+    ja: 記載面積
+    en: source_area
+    dtype: Float
+    default: 0.0
+  樹種１: 
+    ja: 樹種1
+    en: tree_name_1
+    dtype: String
+    default: "-"
+  樹立林齢１: 
+    ja: 樹立林齢1
+    en: tree_age_1
+    dtype: Integer
+    default: 0
+  樹種２: 
+    ja: 樹種2
+    en: tree_name_2
+    dtype: String
+    default: "-"
+  樹立林齢２: 
+    ja: 樹立林齢2
+    en: tree_age_2
+    dtype: Integer
+    default: 0
+  樹種３: 
+    ja: 樹種3
+    en: tree_name_3
+    dtype: String
+    default: "-"
+  樹立林齢３: 
+    ja: 樹立林齢3
+    en: tree_age_3
+    dtype: Integer
+    default: 0
+  林種の細分: 
+    ja: 林種の細分
+    en: forest_type_detail
+    dtype: String
+    default: "-"
+  機能類型: 
+    ja: 機能類型
+    en: forest_feature_type
+    dtype: String
+    default: "-"
+  保安林１: 
+    ja: 保安林1
+    en: protection_forest_1
+    dtype: String
+    default: "-"
+  保安林２: 
+    ja: 保安林2
+    en: protection_forest_2
+    dtype: String
+    default: "-"
+  保安林３: 
+    ja: 保安林3
+    en: protection_forest_3
+    dtype: String
+    default: "-"
+  保安林４: 
+    ja: 保安林4
+    en: protection_forest_4
+    dtype: String
+    default: "-"
+  保護林: 
+    ja: 保護林
+    en: conservation
+    dtype: String
+    default: "-"
+  緑の回廊: 
+    ja: 緑の回廊
+    en: green_corridor
+    dtype: String
+    default: "-"
+  樹立年度: 
+    ja: 樹立年度
+    en: establishment_year
+    dtype: string
+    default: "-"
+  geometry: 
+    ja: geometry
+    en: geometry
+    dtype: Geometry
+    default: null
+forest_road:
+  # 林道データの属性名と、変換後の属性名の対応データです。
+  ID: 
+    ja: ID
+    en: ID
+    dtype: String
+    default: "-"
+  森林管理局:
+    ja: 森林管理局ID
+    en: authority_id
+    dtype: String
+    default: "-"
+  森林管理署:
+    ja: 森林管理署ID
+    en: office_id
+    dtype: String
+    default: "-"
+  路線番号:
+    ja: 路線番号
+    en: route_number
+    dtype: Integer
+    default: -1
+  林道名:
+    ja: 林道名
+    en: road_name
+    dtype: String
+    default: "-"
+  geometry:
+    ja: geometry
+    en: geometry
+    dtype: Geometry
+    default: null
 # ───────────────────────────────────────────────────────────────────────────────
 # 追加情報
 dissolved:
   # 追加情報の属性名と、変換後の属性名の対応データです。
-  
   office:
     # 森林管理署担当区域データの属性名と、変換後の属性名の対応データです。
     森林管理局:
