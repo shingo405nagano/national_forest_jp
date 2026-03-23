@@ -116,6 +116,86 @@ class Coding(object):
         """
         return decode(code, self.dictionary)
 
+    def autority_coding(self) -> "AuthorityCoding":
+        """森林管理局コードの変換器を取得します。
+
+        Returns:
+            AuthorityCoding インスタンス。
+        """
+        return AuthorityCoding()
+
+    def office_coding(self) -> "OfficeCoding":
+        """森林管理署コードの変換器を取得します。
+
+        Returns:
+            OfficeCoding インスタンス。
+        """
+        return OfficeCoding()
+
+    def branch_office_coding(self) -> "BranchOfficeCoding":
+        """担当区コードの変換器を取得します。
+
+        Returns:
+            BranchOfficeCoding インスタンス。
+        """
+        return BranchOfficeCoding()
+
+    def locality_coding(self) -> "LocalityCoding":
+        """国有林コードの変換器を取得します。
+
+        Returns:
+            LocalityCoding インスタンス。
+        """
+        return LocalityCoding()
+
+    def sub_address_name_coding(self) -> "SubAddressNameCoding":
+        """小班名称コードの変換器を取得します。
+
+        Returns:
+            SubAddressNameCoding インスタンス。
+        """
+        return SubAddressNameCoding()
+
+    def tree_name_coding(self) -> "TreeNameCoding":
+        """樹種名コードの変換器を取得します。
+
+        Returns:
+            TreeNameCoding インスタンス。
+        """
+        return TreeNameCoding()
+
+    def tree_species_coding(self) -> "TreeSpeciesCoding":
+        """樹種区分コードの変換器を取得します。
+
+        Returns:
+            TreeSpeciesCoding インスタンス。
+        """
+        return TreeSpeciesCoding()
+
+    def forest_type_detail_coding(self) -> "ForestTypeDetailCoding":
+        """林種の細分コードの変換器を取得します。
+
+        Returns:
+            ForestTypeDetailCoding インスタンス。
+        """
+        return ForestTypeDetailCoding()
+
+    def forest_feature_type_coding(self) -> "ForestFeatureTypeCoding":
+        """機能類型コードの変換器を取得します。
+
+        Returns:
+            ForestFeatureTypeCoding インスタンス。
+        """
+        return ForestFeatureTypeCoding()
+
+    def protected_forest_coding(self) -> "ProtectedForestCoding":
+        """保安林コードの変換器を取得します。
+
+        Returns:
+            ProtectedForestCoding インスタンス。
+        """
+        return ProtectedForestCoding()
+
 
 class AuthorityCoding(Coding):
     """森林管理局コードの変換クラス。"""
