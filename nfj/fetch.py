@@ -284,7 +284,11 @@ class GsShapeFile(object):
                     if self.file_name in filename and filename.endswith(self.endswith):
                         return os.path.join(root, filename)
 
-        raise ValueError("指定された条件に対応するファイルが見つかりませんでした。")
+        raise ValueError(
+            "指定された条件に対応するファイルが見つかりませんでした。"
+            f"条件: plan_area='{plan_area}', file_name='{self.file_name}', "
+            f"存在する計画区: {', '.join(self.plan_area_names)}"
+        )
 
     def read_file(self, plan_area: str) -> gpd.GeoDataFrame:
         """指定された森林計画区の Shapefile を読み込んで GeoDataFrame として返します。
