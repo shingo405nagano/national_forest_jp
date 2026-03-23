@@ -1,9 +1,11 @@
-import warnings
 from typing import Any, Optional
 
 import pydantic
 
 from .config import ADDRESS_FIELDS, FOREST_ROAD_FIELDS  # noqa: F401
+from .logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class FieldInfo(pydantic.BaseModel):
@@ -55,7 +57,7 @@ class FieldInfo(pydantic.BaseModel):
         try:
             return self.dtype(value)
         except (ValueError, TypeError):
-            warnings.warn(
+            logger.warning(
                 f"値 '{value}' を {self.dtype} に変換できません。デフォルト値を使用します。"
             )
             return self.default
@@ -118,5 +120,5 @@ class AddressFields(BaseFields):
         for field_info in self.fields.values():
             if field_info.en == en_field_name:
                 return field_info
-        warnings.warn(f"英語の属性名 '{en_field_name}' は見つかりませんでした。")
+        logger.warning(f"英語の属性名 '{en_field_name}' は見つかりませんでした。")
         return None

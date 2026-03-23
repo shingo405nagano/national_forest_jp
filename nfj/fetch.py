@@ -8,7 +8,6 @@ import io
 import os
 import re
 import tempfile
-import warnings
 import zipfile
 from enum import StrEnum
 from typing import Literal, Optional
@@ -18,6 +17,9 @@ import requests
 
 from .config import URLS
 from .fields import AddressFields
+from .logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class GsFile(StrEnum):
@@ -65,7 +67,17 @@ class Fetcher(object):
                 失敗した場合に警告します。
         """
         if prefecture not in self.urls:
-            warnings.warn(f"都道府県 '{prefecture}' の URL が存在しません。")
+            pattern = re.compile(prefecture)
+            results = [pref for pref in self.urls.keys() if pattern.search(pref)]
+            if results:
+                logger.warning(
+                    f"都道府県 '{prefecture}' の URL が見つかりませんでした。"
+                    f"類似する都道府県名: {', '.join(results)}"
+                )
+            else:
+                logger.warning(
+                    f"都道府県 '{prefecture}' の URL が見つかりませんでした。"
+                )
             return False
         url = self.urls[prefecture]
         try:
@@ -73,7 +85,7 @@ class Fetcher(object):
             response.raise_for_status()
             return True
         except requests.RequestException as e:
-            warnings.warn(f"URL '{url}' にアクセスできませんでした: {e}")
+            logger.warning(f"URL '{url}' にアクセスできませんでした: {e}")
             return False
 
 
@@ -108,14 +120,14 @@ class GsShapeFile(object):
         # URLの確認
         fetcher = Fetcher(year)
         if not fetcher.check_url(prefecture):
-            raise ValueError(f"都道府県 '{prefecture}' の URL が存在しません。")
+            raise ValueError(f"都道府県 '{prefecture}' の URL を確認できませんでした。")
         self.url = fetcher.urls[prefecture]
         # フィールドの初期化
         if category.upper() == GsFile.ADDRESS.name:
             self.fields = AddressFields()
             self.file_name = GsFile.ADDRESS.value + endswith
         elif category.upper() == GsFile.FOREST_ROAD.name:
-            warnings.warn("道路データのフィールドは未定義です。")
+            logger.warning("道路データのフィールドは未定義です。")
             self.fields = None
             self.file_name = GsFile.FOREST_ROAD.value + endswith
         else:
@@ -129,10 +141,10 @@ class GsShapeFile(object):
         self.temp_dir_obj: Optional[tempfile.TemporaryDirectory] = None
         self.temp_dir_path: Optional[str] = None
         self.extract_root_path: Optional[str] = None
-        self.fetch_and_extract()
+        self.download_and_extract()
         self.plan_area_names = self.get_plan_area_names()
 
-    def fetch_and_extract(self) -> None:
+    def download_and_extract(self) -> bool:
         """指定された都道府県のデータをダウンロードして解凍します。
 
         ダウンロードした ZIP ファイルは一時ディレクトリに展開され、
@@ -157,6 +169,7 @@ class GsShapeFile(object):
         self._safe_extract_zip()
         self.extract_root_path = self._extract_root_path()
         self.plan_area2keikaku = {}
+        return True
 
     def _safe_extract_zip(self) -> None:
         """ZIP 内パスを検証してから安全に展開します。
@@ -225,6 +238,9 @@ class GsShapeFile(object):
             抽出した森林計画区名の一覧。展開先が無効な場合は空リスト。
         """
         if not self.extract_root_path or not os.path.isdir(self.extract_root_path):
+            logger.info(
+                "`download_and_extract` 実行前の為、森林計画区名を取得できません。空リストを返します。"
+            )
             return []
 
         plan_area_names = []
