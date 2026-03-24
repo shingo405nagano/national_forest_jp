@@ -56,11 +56,6 @@ address:
     en: sub_address_name
     dtype: String
     default: "-"
-  小班枝番: 
-    ja: 小班枝番
-    en: sub_address_number
-    dtype: Integer
-    default: 0
   材積: 
     ja: 記載材積
     en: source_volume
@@ -144,8 +139,13 @@ address:
   樹立年度: 
     ja: 樹立年度
     en: establishment_year
-    dtype: string
-    default: "-"
+    dtype: Integer
+    default: 0
+  updated_year:
+    ja: 更新年度
+    en: updated_year
+    dtype: Integer
+    default: 0
   geometry: 
     ja: geometry
     en: geometry
