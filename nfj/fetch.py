@@ -13,6 +13,7 @@ from enum import StrEnum
 from typing import Literal, Optional
 
 import geopandas as gpd
+import pyogrio
 import requests
 
 from .config import URLS
@@ -290,7 +291,7 @@ class GsShapeFile(object):
             f"存在する計画区: {', '.join(self.plan_area_names)}"
         )
 
-    def read_file(self, plan_area: str) -> gpd.GeoDataFrame:
+    def _read_file(self, plan_area: str) -> gpd.GeoDataFrame:
         """指定された森林計画区の Shapefile を読み込んで GeoDataFrame として返します。
 
         Args:
@@ -305,7 +306,7 @@ class GsShapeFile(object):
         """
         file_path = self.select_file_path(plan_area)
         try:
-            gdf = gpd.read_file(file_path)
+            gdf = pyogrio.read_dataframe(file_path)
             return gdf
         except Exception as e:
             raise ValueError(
