@@ -199,6 +199,30 @@ class Coding(object):
         return ProtectedForestCoding()
 
 
+class PrefectureCoding(Coding):
+    """都道府県コードの変換クラス。"""
+
+    def __init__(self):
+        """都道府県コード変換クラスを初期化します。"""
+        super().__init__("prefecture")
+
+
+class CityCoding(Coding):
+    """市町村コードの変換クラス。"""
+
+    def __init__(self):
+        """市町村コード変換クラスを初期化します。"""
+        super().__init__("city")
+
+
+class PlanAreaCoding(Coding):
+    """森林計画区コードの変換クラス。"""
+
+    def __init__(self):
+        """森林計画区コード変換クラスを初期化します。"""
+        super().__init__("plan_area")
+
+
 class AuthorityCoding(Coding):
     """森林管理局コードの変換クラス。"""
 
