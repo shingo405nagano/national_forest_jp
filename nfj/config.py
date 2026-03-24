@@ -118,86 +118,6 @@ class Coding(object):
         """
         return decode(code, self.dictionary)
 
-    def autority_coding(self) -> "AuthorityCoding":
-        """森林管理局コードの変換器を取得します。
-
-        Returns:
-            AuthorityCoding インスタンス。
-        """
-        return AuthorityCoding()
-
-    def office_coding(self) -> "OfficeCoding":
-        """森林管理署コードの変換器を取得します。
-
-        Returns:
-            OfficeCoding インスタンス。
-        """
-        return OfficeCoding()
-
-    def branch_office_coding(self) -> "BranchOfficeCoding":
-        """担当区コードの変換器を取得します。
-
-        Returns:
-            BranchOfficeCoding インスタンス。
-        """
-        return BranchOfficeCoding()
-
-    def locality_coding(self) -> "LocalityCoding":
-        """国有林コードの変換器を取得します。
-
-        Returns:
-            LocalityCoding インスタンス。
-        """
-        return LocalityCoding()
-
-    def sub_address_name_coding(self) -> "SubAddressNameCoding":
-        """小班名称コードの変換器を取得します。
-
-        Returns:
-            SubAddressNameCoding インスタンス。
-        """
-        return SubAddressNameCoding()
-
-    def tree_name_coding(self) -> "TreeNameCoding":
-        """樹種名コードの変換器を取得します。
-
-        Returns:
-            TreeNameCoding インスタンス。
-        """
-        return TreeNameCoding()
-
-    def tree_species_coding(self) -> "TreeSpeciesCoding":
-        """樹種区分コードの変換器を取得します。
-
-        Returns:
-            TreeSpeciesCoding インスタンス。
-        """
-        return TreeSpeciesCoding()
-
-    def forest_type_detail_coding(self) -> "ForestTypeDetailCoding":
-        """林種の細分コードの変換器を取得します。
-
-        Returns:
-            ForestTypeDetailCoding インスタンス。
-        """
-        return ForestTypeDetailCoding()
-
-    def forest_feature_type_coding(self) -> "ForestFeatureTypeCoding":
-        """機能類型コードの変換器を取得します。
-
-        Returns:
-            ForestFeatureTypeCoding インスタンス。
-        """
-        return ForestFeatureTypeCoding()
-
-    def protected_forest_coding(self) -> "ProtectedForestCoding":
-        """保安林コードの変換器を取得します。
-
-        Returns:
-            ProtectedForestCoding インスタンス。
-        """
-        return ProtectedForestCoding()
-
 
 class PrefectureCoding(Coding):
     """都道府県コードの変換クラス。"""
@@ -324,3 +244,43 @@ class ProtectedForestCoding(Coding):
             対応する記号文字列。見つからない場合は ``None``。
         """
         return NF_CODING["mark"].get(code, None)
+
+
+class ConservationCoding(Coding):
+    """保護林コードの変換クラス。"""
+
+    def __init__(self):
+        """保護林コード変換クラスを初期化します。"""
+        super().__init__("conservation")
+
+    def decode_original(self, code: int) -> str:
+        """G空間センターオリジナルのデータは数値コードが4桁の為、それを文字列に変換するためのメソッドです。
+
+        Args:
+            code: 変換対象の数値コード。
+
+        Returns:
+            変換後のラベル文字列。見つからない場合は ``"-"`` を返します。
+        """
+        org_codes = {
+            2010: "森林生態系保護地域保存地区",
+            2020: "森林生態系保護地域保全利用地区",
+            2021: "生物群集保護林保存地区",
+            2022: "生物群集保護林保全利用地区",
+            2023: "希少個体群保護林",
+            2030: "森林生物遺伝資源保存林",
+            2040: "林木遺伝資源保存林",
+            2050: "植物群落保護林",
+            2060: "特定動物生息地保護林",
+            2070: "特定地理等保護林",
+            2080: "郷土の森",
+        }
+        return org_codes.get(code, "-")
+
+
+class GreenCorridorCoding(Coding):
+    """緑の回廊コードの変換クラス。"""
+
+    def __init__(self):
+        """緑の回廊コード変換クラスを初期化します。"""
+        super().__init__("green_corridor")
