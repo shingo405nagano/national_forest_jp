@@ -125,11 +125,11 @@ class GsShapeFile(object):
         self.url = fetcher.urls[prefecture]
         # フィールドの初期化
         if category.upper() == GsFile.ADDRESS.name:
-            self.fields = AddressFields()
+            self.fields: AddressFields = AddressFields()
             self.file_name = GsFile.ADDRESS.value + endswith
         elif category.upper() == GsFile.FOREST_ROAD.name:
             logger.warning("道路データのフィールドは未定義です。")
-            self.fields = None
+            self.fields: AddressFields = AddressFields()  # ダミーのフィールドを使用
             self.file_name = GsFile.FOREST_ROAD.value + endswith
         else:
             raise ValueError(
