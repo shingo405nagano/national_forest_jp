@@ -1,31 +1,14 @@
 import datetime
 import re
-from typing import Any, NamedTuple
+from typing import Any
 
 import geopandas as gpd
 import shapely
 
 from .config import ConservationCoding, GreenCorridorCoding
 from .fetch import GsShapeFile
-from .fields import FieldInfo
-
-
-def zen_to_han(text: str) -> str:
-    """全角文字を半角文字に変換します。
-
-    Args:
-        text: 変換対象の文字列。
-
-    Returns:
-        全角文字が半角文字に変換された文字列。
-    """
-    # 全角スペースを半角スペースに変換
-    text = text.replace("　", " ")
-    # 全角英数字を半角英数字に変換
-    text = "".join(
-        chr(ord(char) - 0xFEE0) if "！" <= char <= "～" else char for char in text
-    )
-    return text.replace("－", "-").replace("　", "")
+from .fields import FieldInfo, _AddrsColumns
+from .utils import zen_to_han
 
 
 def convert_wareki_to_seireki(wareki: str) -> int:
@@ -50,27 +33,6 @@ def convert_wareki_to_seireki(wareki: str) -> int:
             wy = int(re.findall(r"\d+", wareki)[0])
             return start_year + wy - 1
     raise ValueError(f"不明な和暦形式: {wareki}")
-
-
-class _AddrsColumns(NamedTuple):
-    """小班区画の処理にて使用する英名の属性名を定義するクラス。
-    基本はfieldsを参照
-    """
-
-    city: str = "city"  # 市町村
-    plan_area: str = "plan_area"  # 森林計画区
-    office: str = "office"  # 森林管理署
-    branch_office: str = "branch_office"  # 担当区
-    locality: str = "locality"  # 国有林
-    main_address: str = "main_address"  # 林班主番
-    address: str = "address"  # 林小班
-    sub_address: str = "sub_address"  # 小班
-    establishment_year: str = "establishment_year"  # 樹立年度
-    tree_age_1: str = "tree_age_1"  # 樹齢1
-    tree_age_2: str = "tree_age_2"  # 樹齢2
-    tree_age_3: str = "tree_age_3"  # 樹齢3
-    conservation: str = "conservation"  # 保護林
-    green_corridor: str = "green_corridor"  # 緑の回廊
 
 
 class GsicAddressShape(GsShapeFile):
@@ -273,58 +235,3 @@ class GsicAddressShape(GsShapeFile):
         """
         geometry = shapely.make_valid(geometry, method="structure", keep_collapsed=True)
         return geometry
-
-    def data_summary(self, gdf: gpd.GeoDataFrame, **kwargs: Any) -> dict[str, Any]:
-        """GeoDataFrame のデータ概要を返します。
-
-        以下の情報を含む辞書を返します。
-
-            ├─ 森林計画区
-            │   ├─ 森林管理署
-            │   │   ├─ 担当区
-            │   │   │   ├─ 国有林
-            │   │   │   ...
-            │   ... ... ...
-            ├─ 森林計画区2
-            ...
-
-        Args:
-            gdf: データ概要を取得する GeoDataFrame。
-            main_addrs: 林班主番を含めるかどうか。デフォルトは False。
-
-        Returns:
-            GeoDataFrame のデータ概要を含む辞書。
-
-        ## Kwargs:
-            - main_addrs: 林班主番を含めるかどうか。デフォルトは False。
-        """
-        acols = _AddrsColumns()
-        grouping = [
-            acols.plan_area,
-            acols.office,
-            acols.branch_office,
-            acols.locality,
-        ]
-        if kwargs.get("main_addrs", False):
-            grouping.append(acols.main_address)
-        # 列が存在する事を確認
-        for col in grouping:
-            if col not in gdf.columns:
-                raise ValueError(f"列 '{col}' が GeoDataFrame に存在しません。")
-
-        smy_df = gdf.groupby(by=grouping).agg({"geometry": "count"}).fillna("-")
-        summary = {}
-        for _, row in smy_df.iterrows():
-            plan_area, office, branch_office, locality, *main_address = row.name  # type: ignore
-            (
-                summary.setdefault(plan_area, {})
-                .setdefault(office, {})
-                .setdefault(branch_office, {})
-                .setdefault(locality, [])
-            )
-            if main_address:
-                summary[plan_area][office][branch_office][locality].append(
-                    main_address[0]
-                )
-
-        return summary
