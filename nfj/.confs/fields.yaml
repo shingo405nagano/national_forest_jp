@@ -16,11 +16,11 @@ address:
     default: "-"
     description: 森林管理局の名称
   計画区: 
-    ja: 計画区
+    ja: 森林計画区
     en: plan_area
     dtype: String
     default: "-"
-    description: 計画区の名称
+    description: 森林計画区の名称
   署名称: 
     ja: 森林管理署
     en: office
