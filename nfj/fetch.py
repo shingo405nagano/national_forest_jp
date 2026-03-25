@@ -22,7 +22,7 @@ import yaml
 from .config import URLS
 from .fields import AddressFields, _AddrsColumns
 from .logging_config import get_logger
-from .utils import zen_to_han
+from .utils import txt_normalizer
 
 logger = get_logger(__name__)
 
@@ -368,7 +368,7 @@ class GsShapeFile(object):
         rename_dict = self.fields.rename_dict_org_to_en()
         df.rename(columns=rename_dict, inplace=True)
         # 国有林名を全角から半角に変換します。
-        df[cols.locality] = df[cols.locality].apply(zen_to_han)
+        df[cols.locality] = df[cols.locality].apply(txt_normalizer)
         # 辞書の構造に変換します。
         summary = {}
         for _, row in df.iterrows():

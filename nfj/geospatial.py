@@ -21,7 +21,7 @@ from .config import (  # noqa: F401
 )
 from .fetch import GsShapeFile
 from .fields import FieldInfo, _AddrsColumns
-from .utils import zen_to_han
+from .utils import txt_normalizer
 
 
 def convert_wareki_to_seireki(wareki: str) -> int:
@@ -35,7 +35,7 @@ def convert_wareki_to_seireki(wareki: str) -> int:
     """
     if not isinstance(wareki, str):
         return wareki
-    wareki = zen_to_han(wareki.strip()).replace("年度樹立", "").replace("元", "1")
+    wareki = txt_normalizer(wareki.strip()).replace("年度樹立", "").replace("元", "1")
 
     era_mapping = {
         "平成": 1989,
@@ -110,7 +110,7 @@ class GsicAddressShape(GsShapeFile):
         org_columns = gdf.columns
         addrs_cols = _AddrsColumns()
         # 国有林名には全角数字が含まれるため、全角を半角に変換する
-        gdf[addrs_cols.locality] = gdf[addrs_cols.locality].apply(zen_to_han)
+        gdf[addrs_cols.locality] = gdf[addrs_cols.locality].apply(txt_normalizer)
         # 林小班名に余計な文字が含まれる為、削除してしまう
         gdf[addrs_cols.address] = gdf[addrs_cols.address].apply(self.__replace_address)
         # 重複する林小班が存在する場合は、1つにまとめる
@@ -184,7 +184,7 @@ class GsicAddressShape(GsShapeFile):
         Returns:
             余計な文字が削除された文字列。
         """
-        return text.replace("_林班_", "").strip()
+        return txt_normalizer(text.replace("_林班_", "").strip())
 
     def __fix_tree_age(self, ad: int, age: int) -> int:
         """樹齢の値を修正するための関数。
