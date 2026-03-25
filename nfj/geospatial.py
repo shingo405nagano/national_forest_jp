@@ -155,7 +155,7 @@ class GsicAddressShape(GsShapeFile):
                 continue
             field_info: FieldInfo = self.fields.field_info(col)  # type: ignore
             gdf[col] = gdf[col].apply(lambda x: field_info.cast(x))
-            gdf[col].fillna(field_info.default, inplace=True)
+            gdf[col] = gdf[col].fillna(field_info.default)
             if field_info.dtype == str:  # type: ignore
                 gdf[col] = gdf[col].replace(
                     {"nan": field_info.default, "NaN": field_info.default}
@@ -235,3 +235,71 @@ class GsicAddressShape(GsShapeFile):
         """
         geometry = shapely.make_valid(geometry, method="structure", keep_collapsed=True)
         return geometry
+
+    def query(self, gdf: gpd.GeoDataFrame, **kwargs: Any) -> gpd.GeoDataFrame:
+        """GeoDataFrame に対してクエリを実行するための関数。
+
+        GeoDataFrameは``geodataframe()`` メソッドで生成され、未加工の状態で渡されることを
+        想定しています。クエリの条件は、キーワード引数として指定されます。
+
+        Args:
+            gdf: クエリを実行する対象の GeoDataFrame。
+            **kwargs: クエリの条件を指定するキーワード引数。
+
+        Returns:
+            クエリの条件に一致する行を含む GeoDataFrame。
+
+        ## Kwargs:
+            - plan_area: 森林計画区の名称でフィルタリングします
+            - office: 森林管理署の名称でフィルタリングします
+            - branch_office: 担当区の名称でフィルタリングします
+            - locality: 国有林の所在地でフィルタリングします
+            - main_address: 林班主番でフィルタリングします
+            - city: 市町村名でフィルタリングします
+        """
+        self.__check_geodataframe(gdf)
+        q = []
+        if "plan_area" in kwargs:
+            q.append(self.__make_query_string("plan_area", kwargs["plan_area"]))
+        if "office" in kwargs:
+            q.append(self.__make_query_string("office", kwargs["office"]))
+        if "branch_office" in kwargs:
+            q.append(self.__make_query_string("branch_office", kwargs["branch_office"]))
+        if "locality" in kwargs:
+            q.append(self.__make_query_string("locality", kwargs["locality"]))
+        if "main_address" in kwargs:
+            q.append(self.__make_query_string("main_address", kwargs["main_address"]))
+        if "city" in kwargs:
+            q.append(self.__make_query_string("city", kwargs["city"]))
+        query_string = " and ".join(q)
+        return gdf.query(query_string)
+
+    def __make_query_string(self, column: str, value: str | int | list[Any]) -> str:
+        """DataFrameのクエリ文字列を生成するための関数。SQLとは異なります。
+
+        Args:
+            column: クエリ対象のカラム名。
+            value: クエリ条件の値。文字列、整数、またはそれらのリストで指定できます。
+
+        Returns:
+            クエリ文字列。
+        """
+        if isinstance(value, list):
+            q = " or ".join([self.__make_query_string(column, v) for v in value])
+            return q
+        elif isinstance(value, str):
+            return f"{column} == {repr(value)}"
+        elif isinstance(value, int):
+            return f"{column} == {value}"
+
+    def __check_geodataframe(self, gdf: gpd.GeoDataFrame) -> None:
+        """GeoDataFrame の内容をチェックするための関数。
+
+        Args:
+            gpd.GeoDataFrame: チェック対象の GeoDataFrame。
+
+        Returns:
+            なし。エラーがある場合は例外を発生させる。
+        """
+        assert set(gdf.columns) == set(self.fields.use_default_en_fields())
+        assert gdf["geometry"].dtype.name == "geometry"
