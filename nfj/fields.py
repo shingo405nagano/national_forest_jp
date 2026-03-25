@@ -1,4 +1,4 @@
-from typing import Any, NamedTuple, Optional
+from typing import Any, Optional
 
 import pydantic
 
@@ -128,22 +128,13 @@ class AddressFields(BaseFields):
         raise ValueError(f"英語の属性名 '{en_field_name}' は見つかりませんでした。")
 
 
-class _AddrsColumns(NamedTuple):
+class _AddrsColumns(object):
     """小班区画の処理にてよく使用する英名の属性名を定義するクラス。"""
 
-    city: str = ADDRESS_FIELDS.get("県市町村", {}).get("en", "city")
-    plan_area: str = ADDRESS_FIELDS.get("計画区", {}).get("en", "plan_area")
-    office: str = ADDRESS_FIELDS.get("森林管理署", {}).get("en", "office")
-    branch_office: str = ADDRESS_FIELDS.get("担当区", {}).get("en", "branch_office")
-    locality: str = ADDRESS_FIELDS.get("国有林名", {}).get("en", "locality")
-    main_address: str = ADDRESS_FIELDS.get("林班主番", {}).get("en", "main_address")
-    address: str = ADDRESS_FIELDS.get("林小班名称", {}).get("en", "address")
-    sub_address: str = ADDRESS_FIELDS.get("小班名", {}).get("en", "sub_address_name")
-    establishment_year: str = ADDRESS_FIELDS.get("樹立年度", {}).get(
-        "en", "establishment_year"
-    )
-    tree_age_1: str = ADDRESS_FIELDS.get("樹齢1", {}).get("en", "tree_age_1")
-    tree_age_2: str = ADDRESS_FIELDS.get("樹齢2", {}).get("en", "tree_age_2")
-    tree_age_3: str = ADDRESS_FIELDS.get("樹齢3", {}).get("en", "tree_age_3")
-    conservation: str = ADDRESS_FIELDS.get("保護林", {}).get("en", "conservation")
-    green_corridor: str = ADDRESS_FIELDS.get("緑の回廊", {}).get("en", "green_corridor")
+    def __init__(self):
+        for _, data in ADDRESS_FIELDS.items():
+            setattr(self, data["en"], data["en"])
+
+    def __getattr__(self, name: str) -> str:
+        # Pylance向け: ADDRESS_FIELDS由来の動的属性は文字列として扱う
+        return name
