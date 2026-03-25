@@ -5,7 +5,20 @@ from typing import Any
 import geopandas as gpd
 import shapely
 
-from .config import ConservationCoding, GreenCorridorCoding
+from .config import (  # noqa: F401
+    AuthorityCoding,
+    BranchOfficeCoding,
+    CityCoding,
+    ConservationCoding,
+    ForestFeatureTypeCoding,
+    ForestTypeDetailCoding,
+    GreenCorridorCoding,
+    LocalityCoding,
+    OfficeCoding,
+    PlanAreaCoding,
+    ProtectedForestCoding,
+    TreeNameCoding,
+)
 from .fetch import GsShapeFile
 from .fields import FieldInfo, _AddrsColumns
 from .utils import zen_to_han
@@ -303,3 +316,106 @@ class GsicAddressShape(GsShapeFile):
         """
         assert set(gdf.columns) == set(self.fields.use_default_en_fields())
         assert gdf["geometry"].dtype.name == "geometry"
+
+    def encode(self, gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+        """GeoDataFrame の属性をコード化します。
+
+        ここで処理されるコード化は、'.confs/nf_coding.yaml' に定義されたものに基づいています。
+        GeoDataFrameは``geodataframe()`` メソッドで生成され、未加工の状態で渡されることを
+        想定しています。
+
+        Args:
+            gdf: コード化する GeoDataFrame。
+
+        Returns:
+            コード化された GeoDataFrame。
+        """
+
+        def _encode(gdf, col, coding, dtype):
+            gdf[col] = gdf[col].apply(coding.encode).astype(dtype)
+            return gdf
+
+        self.__check_geodataframe(gdf)
+        gdf = gdf.copy()
+        cols = _AddrsColumns()
+        city_coding = CityCoding()
+        gdf = _encode(gdf, cols.city, city_coding, "int")
+        authority_coding = AuthorityCoding()
+        gdf = _encode(gdf, cols.authority, authority_coding, "int")
+        plan_area_coding = PlanAreaCoding()
+        gdf = _encode(gdf, cols.plan_area, plan_area_coding, "int")
+        office_coding = OfficeCoding()
+        gdf = _encode(gdf, cols.office, office_coding, "int")
+        branch_office_coding = BranchOfficeCoding()
+        gdf = _encode(gdf, cols.branch_office, branch_office_coding, "int")
+        locality_coding = LocalityCoding()
+        gdf = _encode(gdf, cols.locality, locality_coding, "int")
+        tree_name_coding = TreeNameCoding()
+        gdf = _encode(gdf, cols.tree_name_1, tree_name_coding, "int")
+        gdf = _encode(gdf, cols.tree_name_2, tree_name_coding, "int")
+        gdf = _encode(gdf, cols.tree_name_3, tree_name_coding, "int")
+        ftd_coding = ForestTypeDetailCoding()
+        gdf = _encode(gdf, cols.forest_type_detail, ftd_coding, "int")
+        fft_coding = ForestFeatureTypeCoding()
+        gdf = _encode(gdf, cols.forest_feature_type, fft_coding, "int")
+        protected_coding = ProtectedForestCoding()
+        gdf = _encode(gdf, cols.protection_forest_1, protected_coding, "int")
+        gdf = _encode(gdf, cols.protection_forest_2, protected_coding, "int")
+        gdf = _encode(gdf, cols.protection_forest_3, protected_coding, "int")
+        gdf = _encode(gdf, cols.protection_forest_4, protected_coding, "int")
+        conservation_coding = ConservationCoding()
+        gdf = _encode(gdf, cols.conservation, conservation_coding, "int")
+        green_corridor_coding = GreenCorridorCoding()
+        gdf = _encode(gdf, cols.green_corridor, green_corridor_coding, "int")
+        return gdf
+
+    def decode(self, gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+        """GeoDataFrame の属性をコード化します。
+        ここで処理されるコード化は、'.confs/nf_coding.yaml' に定義されたものに基づいています。
+        GeoDataFrameは``geodataframe()`` メソッドで生成され、未加工の状態で渡されることを
+        想定しています。
+
+        Args:
+            gdf: デコードする GeoDataFrame。
+
+        Returns:
+            デコードされた GeoDataFrame。
+        """
+
+        def _decode(gdf, col, coding, dtype):
+            gdf[col] = gdf[col].apply(coding.decode).astype(dtype)
+            return gdf
+
+        self.__check_geodataframe(gdf)
+        gdf = gdf.copy()
+        cols = _AddrsColumns()
+        city_coding = CityCoding()
+        gdf = _decode(gdf, cols.city, city_coding, "str")
+        authority_coding = AuthorityCoding()
+        gdf = _decode(gdf, cols.authority, authority_coding, "str")
+        plan_area_coding = PlanAreaCoding()
+        gdf = _decode(gdf, cols.plan_area, plan_area_coding, "str")
+        office_coding = OfficeCoding()
+        gdf = _decode(gdf, cols.office, office_coding, "str")
+        branch_office_coding = BranchOfficeCoding()
+        gdf = _decode(gdf, cols.branch_office, branch_office_coding, "str")
+        locality_coding = LocalityCoding()
+        gdf = _decode(gdf, cols.locality, locality_coding, "str")
+        tree_name_coding = TreeNameCoding()
+        gdf = _decode(gdf, cols.tree_name_1, tree_name_coding, "str")
+        gdf = _decode(gdf, cols.tree_name_2, tree_name_coding, "str")
+        gdf = _decode(gdf, cols.tree_name_3, tree_name_coding, "str")
+        ftd_coding = ForestTypeDetailCoding()
+        gdf = _decode(gdf, cols.forest_type_detail, ftd_coding, "str")
+        fft_coding = ForestFeatureTypeCoding()
+        gdf = _decode(gdf, cols.forest_feature_type, fft_coding, "str")
+        protected_coding = ProtectedForestCoding()
+        gdf = _decode(gdf, cols.protection_forest_1, protected_coding, "str")
+        gdf = _decode(gdf, cols.protection_forest_2, protected_coding, "str")
+        gdf = _decode(gdf, cols.protection_forest_3, protected_coding, "str")
+        gdf = _decode(gdf, cols.protection_forest_4, protected_coding, "str")
+        conservation_coding = ConservationCoding()
+        gdf = _decode(gdf, cols.conservation, conservation_coding, "str")
+        green_corridor_coding = GreenCorridorCoding()
+        gdf = _decode(gdf, cols.green_corridor, green_corridor_coding, "str")
+        return gdf
