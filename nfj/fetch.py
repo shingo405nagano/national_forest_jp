@@ -5,20 +5,24 @@
 """
 
 import io
+import json
 import os
 import re
 import tempfile
 import zipfile
 from enum import StrEnum
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 import geopandas as gpd
+import pandas as pd
 import pyogrio
 import requests
+import yaml
 
 from .config import URLS
-from .fields import AddressFields
+from .fields import AddressFields, _AddrsColumns
 from .logging_config import get_logger
+from .utils import zen_to_han
 
 logger = get_logger(__name__)
 
@@ -312,6 +316,79 @@ class GsShapeFile(object):
             raise ValueError(
                 f"ファイル '{file_path}' の読み込みに失敗しました。エラー: {e}"
             )
+
+    def summary(self, **kwargs: Any) -> dict[str, Any]:
+        """ダウンロードしたZipファイルに保存されているデータの概要を返します。
+
+        Returns:
+
+            dict[str, Any]:
+                データ概要を含む辞書。構造は以下のようになります。
+                ```
+                ├─ 森林計画区
+                │   ├─ 森林管理署
+                │   │   ├─ 担当区
+                │   │   │   ├─ 国有林
+                │   │   │   ...
+                │   ... ... ...
+                ├─ 森林計画区2
+                ...
+                ```
+        ## Kwargs:
+            yaml(bool): データを'YAML'形式の文字列で返すかどうか。デフォルトはFalse。
+            json(bool): データを'JSON'形式の文字列で返すかどうか。デフォルトはFalse。
+        """
+        # ダウンロードしたデータはカラムが日本語であるため注意が必要です。
+        cols = _AddrsColumns()
+        selects_en = [
+            cols.plan_area,
+            cols.office,
+            cols.branch_office,
+            cols.locality,
+            cols.main_address,
+        ]
+        selects_org = []
+        for en in selects_en:
+            field_info = self.fields.field_info(en)
+            selects_org.append(field_info.org)
+        dfs = []
+        for plan_area in self.plan_area_names:
+            file_path = self.select_file_path(plan_area)
+            _df = pyogrio.read_dataframe(
+                file_path, columns=selects_org, read_geometry=False
+            )
+            field_info = self.fields.field_info(cols.main_address)
+            _df[field_info.org] = _df[field_info.org].apply(field_info.cast)
+            _df = _df.groupby(by=selects_org[:-1], as_index=False).agg(
+                {field_info.org: "unique"}
+            )
+            dfs.append(_df)
+        # 全ての計画区のデータを結合し、カラムを英語に変換します。
+        df = pd.concat(dfs, ignore_index=True)
+        rename_dict = self.fields.rename_dict_org_to_en()
+        df.rename(columns=rename_dict, inplace=True)
+        # 国有林名を全角から半角に変換します。
+        df[cols.locality] = df[cols.locality].apply(zen_to_han)
+        # 辞書の構造に変換します。
+        summary = {}
+        for _, row in df.iterrows():
+            plan_area, office, branch_office, locality, main_address = row.values
+            main_address = main_address.tolist()  # np.ndarray -> list に変換
+            (
+                summary.setdefault(plan_area, {})
+                .setdefault(office, {})
+                .setdefault(branch_office, {})
+                .setdefault(locality, [])
+            )
+            if main_address:
+                summary[plan_area][office][branch_office][locality] += main_address
+
+        # YAML形式で返す場合
+        if kwargs.get("yaml", False):
+            return yaml.dump(summary, allow_unicode=True, sort_keys=False, indent=2)
+        elif kwargs.get("json", False):
+            return json.dumps(summary, ensure_ascii=False, indent=2)
+        return summary
 
     def cleanup(self) -> None:
         """確保したリソースを解放します。
