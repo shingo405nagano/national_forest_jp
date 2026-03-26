@@ -100,17 +100,23 @@ class GsicAddressShape(GsShapeFile):
         Returns:
             指定した森林計画区の小班区画データを含む GeoDataFrame。
         """
+        addrs_cols = _AddrsColumns()
         # EsriShapefile を GeoDataFrame として読み込む
         gdf = self._read_file(plan_area=plan_area)
         # 樹立年度を西暦に変換する
         gdf["樹立年度"] = gdf["樹立年度"].apply(convert_wareki_to_seireki)
         # 更新年を記録
-        gdf["updated_year"] = datetime.datetime.now().year
+        gdf[addrs_cols.updated_year] = datetime.datetime.now().year
         gdf = self.__cast_geodataframe(gdf)
         org_columns = gdf.columns
-        addrs_cols = _AddrsColumns()
-        # 国有林名には全角数字が含まれるため、全角を半角に変換する
-        gdf[addrs_cols.locality] = gdf[addrs_cols.locality].apply(txt_normalizer)
+        # 森林管理局名に”森林管理局”が含まれている場合は削除する
+        gdf[addrs_cols.authority] = (
+            gdf[addrs_cols.authority].str.replace("森林管理局", "").str.strip()
+        )
+        # 正規化が必要なカラムの値を正規化する（「市町村名」「担当区」「国有林名」）
+        for col in [addrs_cols.city, addrs_cols.branch_office, addrs_cols.locality]:
+            gdf[col] = gdf[col].apply(txt_normalizer)
+
         # 林小班名に余計な文字が含まれる為、削除してしまう
         gdf[addrs_cols.address] = gdf[addrs_cols.address].apply(self.__replace_address)
         # 重複する林小班が存在する場合は、1つにまとめる
@@ -118,24 +124,18 @@ class GsicAddressShape(GsShapeFile):
             by=[addrs_cols.office, addrs_cols.address], as_index=False, aggfunc="first"
         )
         # 樹齢を修正する
-        gdf[addrs_cols.tree_age_1] = gdf.apply(
-            lambda row: self.__fix_tree_age(
-                row[addrs_cols.establishment_year], row[addrs_cols.tree_age_1]
-            ),
-            axis=1,
-        )
-        gdf[addrs_cols.tree_age_2] = gdf.apply(
-            lambda row: self.__fix_tree_age(
-                row[addrs_cols.establishment_year], row[addrs_cols.tree_age_2]
-            ),
-            axis=1,
-        )
-        gdf[addrs_cols.tree_age_3] = gdf.apply(
-            lambda row: self.__fix_tree_age(
-                row[addrs_cols.establishment_year], row[addrs_cols.tree_age_3]
-            ),
-            axis=1,
-        )
+        for col in [
+            addrs_cols.tree_age_1,
+            addrs_cols.tree_age_2,
+            addrs_cols.tree_age_3,
+        ]:
+            gdf[col] = gdf.apply(
+                lambda row: self.__fix_tree_age(
+                    row[addrs_cols.establishment_year], row[col]
+                ),
+                axis=1,
+            )
+
         # 保護林の区分コードを正式な名称に変換する
         gdf[addrs_cols.conservation] = gdf[addrs_cols.conservation].apply(
             self.__decode_conservation
