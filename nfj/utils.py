@@ -10,7 +10,7 @@ def txt_normalizer(txt):
         )
     )
 
-    txt = txt.replace("−", "-")
+    txt = txt.replace("−", "-").replace("－", "-").replace("―", "-")
     txt = txt.replace(" ", "").replace("　", "")
 
     # 漢字の間にある「ケ」→「ヶ」
