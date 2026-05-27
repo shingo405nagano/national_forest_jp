@@ -419,3 +419,16 @@ class GsicAddressShape(GsShapeFile):
         green_corridor_coding = GreenCorridorCoding()
         gdf = _decode(gdf, cols.green_corridor, green_corridor_coding, "str")
         return gdf
+
+    def field_and_alias(self) -> dict[str, str]:
+        """
+        GeoDataFrame の属性名とそのエイリアスの辞書を返します。
+        ここでのエイリアスは、'.confs/fields.yaml' に定義されたものに基づいています。
+        Returns:
+            属性名とエイリアスの辞書。
+        """
+        return {
+            field_info.en: field_info.ja for field_info in self.fields.fields.values()
+        }
+
+    def 
