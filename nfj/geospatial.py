@@ -430,5 +430,3 @@ class GsicAddressShape(GsShapeFile):
         return {
             field_info.en: field_info.ja for field_info in self.fields.fields.values()
         }
-
-    def 
