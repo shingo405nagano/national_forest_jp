@@ -439,6 +439,7 @@ class GsicAddressShape(GsShapeFile):
         gdf: gpd.GeoDataFrame,
         alias: bool = False,
         output_dtype: OutputGeoJsonType | str | int = OutputGeoJsonType.STRING,
+        **kwargs: Any,
     ) -> str | bytes | dict[str, Any]:
         """
         GeoDataFrameをGeoJSON形式の文字列に変換します。
@@ -459,9 +460,13 @@ class GsicAddressShape(GsShapeFile):
                  - 0 | OutputGeoJsonType.STRING | 'string': 文字列で出力します。
                  - 1 | OutputGeoJsonType.BYTES | 'bytes': バイト列で出力します。
                  - 2 | OutputGeoJsonType.DICT | 'dict': 辞書形式で出力します。
+                 - 3 | OutputGeoJsonType.PATH | 'path': ファイルパスに出力します。
+            path(str, optional):
+                GeoJSONファイルの出力先パス。``OutputGeoJsonType.PATH`` を指定した場合
+                に使用されます。
 
         Returns:
-            GeoJSON形式の文字列、バイト列、または辞書。
+            GeoJSON形式の文字列、バイト列、辞書、またはファイルパス。
 
         Example:
             ```python
@@ -480,7 +485,6 @@ class GsicAddressShape(GsShapeFile):
         if alias:
             gdf = gdf.rename(columns=self.field_and_alias())
 
-        # GeoDataFrameをGeoJSON形式の文字列に変換して返します。
         if isinstance(output_dtype, int):
             output_dtype = OutputGeoJsonType(output_dtype)
         elif isinstance(output_dtype, str):
@@ -494,5 +498,11 @@ class GsicAddressShape(GsShapeFile):
                 return buffer.getvalue()
         elif output_dtype == OutputGeoJsonType.DICT:
             return gdf.to_geo_dict()
+        elif output_dtype == OutputGeoJsonType.PATH and "path" in kwargs:
+            path = kwargs["path"]
+            if not isinstance(path, str):
+                raise ValueError("pathは文字列で指定してください。")
+            gdf.to_file(path, driver="GeoJSON")
+            return path
         else:
             raise ValueError(f"Unsupported output_dtype: {output_dtype}")
