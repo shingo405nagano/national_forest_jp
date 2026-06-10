@@ -1,4 +1,6 @@
 import datetime
+import io
+import json
 import re
 from typing import Any
 
@@ -19,6 +21,7 @@ from .config import (  # noqa: F401
     ProtectedForestCoding,
     TreeNameCoding,
 )
+from .enums import OutputDtype
 from .fetch import GsShapeFile
 from .fields import FieldInfo, _AddrsColumns
 from .utils import txt_normalizer
@@ -430,3 +433,54 @@ class GsicAddressShape(GsShapeFile):
         return {
             field_info.en: field_info.ja for field_info in self.fields.fields.values()
         }
+
+    def to_geojson(
+        self,
+        gdf: gpd.GeoDataFrame,
+        alias: bool = False,
+        output_dtype: OutputDtype | str | int = OutputDtype.STRING,
+    ) -> Any:
+        """
+        GeoDataFrameをGeoJSON形式の文字列に変換します。
+        フィールド名のエイリアスを適用したい場合は、``alias`` を ``True`` に設定し、
+        クラスの初期化時に渡した ``field_and_alias`` を使用してカラム名を変更します。
+        出力形式を指定する場合は、``output_dtype`` に適切な値を設定してください。ディゾルブ
+        後のGeoDataFrameでも同様に処理されます。
+
+        GeoJSONは通常、EPSG:4326（WGS 84）を使用するため、CRSが異なる場合は変換します。
+
+        Args:
+            gdf(gpd.GeoDataFrame):
+                GeoJSON形式に変換する対象のGeoDataFrame。
+            alias(bool, optional):
+                フィールド名のエイリアスを適用するかどうか。デフォルトは ``False`` です。
+            output_dtype(OutputDtype, optional):
+                出力形式を指定します。デフォルトは ``OutputDtype.STRING`` です。
+                 - 0 | OutputDtype.STRING | 'string': 文字列で出力します。
+                 - 1 | OutputDtype.BYTES | 'bytes': バイト列で出力します。
+                 - 2 | OutputDtype.DICT | 'dict': 辞書形式で出力します。
+        """
+        if gdf.crs is None:
+            raise ValueError("GeoDataFrameのCRSが設定されていません。")
+        elif gdf.crs.to_epsg() != 4326:
+            gdf = gdf.to_crs(epsg=4326)
+
+        if alias:
+            gdf = gdf.rename(columns=self.field_and_alias())
+
+        # GeoDataFrameをGeoJSON形式の文字列に変換して返します。
+        if isinstance(output_dtype, int):
+            output_dtype = OutputDtype(output_dtype)
+        elif isinstance(output_dtype, str):
+            output_dtype = OutputDtype[output_dtype.upper()]
+
+        if output_dtype == OutputDtype.STRING:
+            return json.dumps(gdf.to_geo_dict(), ensure_ascii=False)
+        elif output_dtype == OutputDtype.BYTES:
+            with io.BytesIO() as buffer:
+                gdf.to_file(buffer, driver="GeoJSON")
+                return buffer.getvalue()
+        elif output_dtype == OutputDtype.DICT:
+            return gdf.to_geo_dict()
+        else:
+            raise ValueError(f"Unsupported output_dtype: {output_dtype}")
