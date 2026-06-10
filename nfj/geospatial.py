@@ -21,7 +21,7 @@ from .config import (  # noqa: F401
     ProtectedForestCoding,
     TreeNameCoding,
 )
-from .enums import OutputDtype
+from .enums import OutputGeoJsonType
 from .fetch import GsShapeFile
 from .fields import FieldInfo, _AddrsColumns
 from .utils import txt_normalizer
@@ -438,8 +438,8 @@ class GsicAddressShape(GsShapeFile):
         self,
         gdf: gpd.GeoDataFrame,
         alias: bool = False,
-        output_dtype: OutputDtype | str | int = OutputDtype.STRING,
-    ) -> Any:
+        output_dtype: OutputGeoJsonType | str | int = OutputGeoJsonType.STRING,
+    ) -> str | bytes | dict[str, Any]:
         """
         GeoDataFrameをGeoJSON形式の文字列に変換します。
         フィールド名のエイリアスを適用したい場合は、``alias`` を ``True`` に設定し、
@@ -454,11 +454,23 @@ class GsicAddressShape(GsShapeFile):
                 GeoJSON形式に変換する対象のGeoDataFrame。
             alias(bool, optional):
                 フィールド名のエイリアスを適用するかどうか。デフォルトは ``False`` です。
-            output_dtype(OutputDtype, optional):
-                出力形式を指定します。デフォルトは ``OutputDtype.STRING`` です。
-                 - 0 | OutputDtype.STRING | 'string': 文字列で出力します。
-                 - 1 | OutputDtype.BYTES | 'bytes': バイト列で出力します。
-                 - 2 | OutputDtype.DICT | 'dict': 辞書形式で出力します。
+            output_dtype(OutputGeoJsonType, optional):
+                出力形式を指定します。デフォルトは ``OutputGeoJsonType.STRING`` です。
+                 - 0 | OutputGeoJsonType.STRING | 'string': 文字列で出力します。
+                 - 1 | OutputGeoJsonType.BYTES | 'bytes': バイト列で出力します。
+                 - 2 | OutputGeoJsonType.DICT | 'dict': 辞書形式で出力します。
+
+        Returns:
+            GeoJSON形式の文字列、バイト列、または辞書。
+
+        Example:
+            ```python
+            shp = GsicAddressShape(prefecture="滋賀県")
+            gdf = shp.geodataframe(plan_area="湖南森林計画区")
+            geojson_string = shp.to_geojson(gdf, alias=True, output_dtype="string")
+            with open("output.geojson", "w", encoding="utf-8") as f:
+                f.write(geojson_string)
+            ```
         """
         if gdf.crs is None:
             raise ValueError("GeoDataFrameのCRSが設定されていません。")
@@ -470,17 +482,17 @@ class GsicAddressShape(GsShapeFile):
 
         # GeoDataFrameをGeoJSON形式の文字列に変換して返します。
         if isinstance(output_dtype, int):
-            output_dtype = OutputDtype(output_dtype)
+            output_dtype = OutputGeoJsonType(output_dtype)
         elif isinstance(output_dtype, str):
-            output_dtype = OutputDtype[output_dtype.upper()]
+            output_dtype = OutputGeoJsonType[output_dtype.upper()]
 
-        if output_dtype == OutputDtype.STRING:
+        if output_dtype == OutputGeoJsonType.STRING:
             return json.dumps(gdf.to_geo_dict(), ensure_ascii=False)
-        elif output_dtype == OutputDtype.BYTES:
+        elif output_dtype == OutputGeoJsonType.BYTES:
             with io.BytesIO() as buffer:
                 gdf.to_file(buffer, driver="GeoJSON")
                 return buffer.getvalue()
-        elif output_dtype == OutputDtype.DICT:
+        elif output_dtype == OutputGeoJsonType.DICT:
             return gdf.to_geo_dict()
         else:
             raise ValueError(f"Unsupported output_dtype: {output_dtype}")
