@@ -21,9 +21,10 @@ from .config import (  # noqa: F401
     ProtectedForestCoding,
     TreeNameCoding,
 )
-from .enums import OutputGeoJsonType
+from .enums import OutputGeoJsonType, OutputGeoPackageType
 from .fetch import GsShapeFile
 from .fields import FieldInfo, _AddrsColumns
+from .geopackage import GeoPackage
 from .utils import txt_normalizer
 
 
@@ -503,6 +504,72 @@ class GsicAddressShape(GsShapeFile):
             if not isinstance(path, str):
                 raise ValueError("pathは文字列で指定してください。")
             gdf.to_file(path, driver="GeoJSON")
+            return path
+        else:
+            raise ValueError(f"Unsupported output_dtype: {output_dtype}")
+
+    def to_geopackage(
+        self,
+        gdf: gpd.GeoDataFrame,
+        layer: str,
+        alias: bool = False,
+        output_dtype: OutputGeoPackageType | str | int = OutputGeoPackageType.GPKG,
+        **kwargs: Any,
+    ) -> GeoPackage | str:
+        """
+        GeoDataFrameをGeoPackage形式に変換します。
+        フィールド名のエイリアスを適用したい場合は、``alias`` を ``True`` に設定し、クラス
+        の初期化時に渡した ``field_and_alias`` を使用してカラム名を変更します。
+        出力形式を指定する場合は、``output_dtype`` に適切な値を設定してください。
+
+        Args:
+            gdf(gpd.GeoDataFrame):
+                GeoPackage形式に変換する対象のGeoDataFrame。
+            layer(str):
+                GeoPackage内のレイヤー名を指定します。
+            alias(bool, optional):
+                フィールド名のエイリアスを適用するかどうか。デフォルトは ``False`` です。
+                ``True``の場合は、Layerとして保存した後に、指定されたエイリアスを追加し、
+                FieldとAliasの対応関係を保持します。
+            output_dtype(OutputGeoPackageType, optional):
+                出力形式を指定します。デフォルトは ``OutputGeoPackageType.BYTES`` です。
+                 - 0 | OutputGeoPackageType.GPKG | 'gpkg': GeoPackageオブジェクトを返します。
+                 - 1 | OutputGeoPackageType.PATH | 'path': ファイルパスに出力します。
+            path(str, optional):
+                GeoPackageファイルの出力先パス。``OutputGeoPackageType.PATH`` を指定し
+                た場合に使用されます。
+            gpkg(GeoPackage, optional):
+                GeoPackageオブジェクトを指定します。指定された場合、出力形式に関わらずこのオブジェクトに書き込まれます。
+                指定されない場合は、出力形式に応じて内部でGeoPackageオブジェクトが作成されます。
+        Returns:
+            GeoPackageオブジェクト、バイト列、またはファイルパス。
+        """
+        # CRSの確認
+        if gdf.crs is None:
+            raise ValueError("GeoDataFrameのCRSが設定されていません。")
+        # `gpkg`が指定されている場合はそれを使用し、そうでない場合は出力形式に応じて内部で
+        # GeoPackageオブジェクトを作成する
+        if "gpkg" in kwargs:
+            gpkg = kwargs["gpkg"]
+            if not isinstance(gpkg, GeoPackage):
+                raise ValueError("gpkgはGeoPackageオブジェクトで指定してください。")
+        else:
+            gpkg = GeoPackage(self.field_and_alias())
+        # GeoPackageオブジェクトに書き込む
+        gpkg.to_geopackage(gdf, layer=layer, alias=alias)
+        # 出力形式に応じて返す
+        if isinstance(output_dtype, int):
+            output_dtype = OutputGeoPackageType(output_dtype)
+        elif isinstance(output_dtype, str):
+            output_dtype = OutputGeoPackageType[output_dtype.upper()]
+
+        if output_dtype == OutputGeoPackageType.GPKG:
+            return gpkg
+        elif output_dtype == OutputGeoPackageType.PATH and "path" in kwargs:
+            path = kwargs["path"]
+            if not isinstance(path, str):
+                raise ValueError("pathは文字列で指定してください。")
+            gpkg.save(path)
             return path
         else:
             raise ValueError(f"Unsupported output_dtype: {output_dtype}")

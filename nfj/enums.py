@@ -6,3 +6,8 @@ class OutputGeoJsonType(Enum):
     BYTES = 1
     DICT = 2
     PATH = 3
+
+
+class OutputGeoPackageType(Enum):
+    GPKG = 0
+    PATH = 1
