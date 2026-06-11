@@ -2,7 +2,7 @@ import datetime
 import io
 import json
 import re
-from typing import Any
+from typing import Any, Optional
 
 import geopandas as gpd
 import shapely
@@ -21,9 +21,17 @@ from .config import (  # noqa: F401
     ProtectedForestCoding,
     TreeNameCoding,
 )
-from .enums import OutputGeoJsonType, OutputGeoPackageType
+from .enums import OutputGeoJsonType
 from .fetch import GsShapeFile
-from .fields import FieldInfo, _AddrsColumns
+from .fields import (
+    BranchOfficeFields,
+    FieldInfo,
+    LocalityFields,
+    MainAddressFields,
+    OfficeFields,
+    ProtectedForestFields,
+    _AddrsColumns,
+)
 from .geopackage import GeoPackage
 from .utils import txt_normalizer
 
@@ -435,6 +443,110 @@ class GsicAddressShape(GsShapeFile):
             field_info.en: field_info.ja for field_info in self.fields.fields.values()
         }
 
+    def dissolve_by_office(self, gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+        """GeoDataFrame を森林管理署ごとにディゾルブします。
+        Args:
+            gdf(gpd.GeoDataFrame):
+                このクラスで生成された GeoDataFrame を想定しています。それ以外の GeoDataFrame
+                を渡した場合、エラーが発生します。
+        Returns:
+            森林管理署ごとにディゾルブされた GeoDataFrame。
+        """
+        office_fields = OfficeFields()
+        self.__check_geodataframe(gdf)
+        dissolved = gdf.dissolve(by=office_fields.dissolve_fields(), as_index=False)
+        return dissolved[office_fields.fields()]
+
+    def dissolve_by_branch_office(self, gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+        """GeoDataFrame を担当区ごとにディゾルブします。
+        Args:
+            gdf(gpd.GeoDataFrame):
+                このクラスで生成された GeoDataFrame を想定しています。それ以外の GeoDataFrame
+                を渡した場合、エラーが発生します。
+        Returns:
+            担当区ごとにディゾルブされた GeoDataFrame。
+        """
+        branch_office_fields = BranchOfficeFields()
+        self.__check_geodataframe(gdf)
+        dissolved = gdf.dissolve(
+            by=branch_office_fields.dissolve_fields(), as_index=False
+        )
+        return dissolved[branch_office_fields.fields()]
+
+    def dissolve_by_locality(self, gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+        """GeoDataFrame を国有林の所在地ごとにディゾルブします。
+        Args:
+            gdf(gpd.GeoDataFrame):
+                このクラスで生成された GeoDataFrame を想定しています。それ以外の GeoDataFrame
+                を渡した場合、エラーが発生します。
+        Returns:
+            国有林の所在地ごとにディゾルブされた GeoDataFrame。
+        """
+        locality_fields = LocalityFields()
+        self.__check_geodataframe(gdf)
+        dissolved = gdf.dissolve(by=locality_fields.dissolve_fields(), as_index=False)
+        return dissolved[locality_fields.fields()]
+
+    def dissolve_by_main_address(self, gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+        """GeoDataFrame を林班ごとにディゾルブします。
+        Args:
+            gdf(gpd.GeoDataFrame):
+                このクラスで生成された GeoDataFrame を想定しています。それ以外の GeoDataFrame
+                を渡した場合、エラーが発生します。
+        Returns:
+            林班ごとにディゾルブされた GeoDataFrame。
+        """
+        main_address_fields = MainAddressFields()
+        self.__check_geodataframe(gdf)
+        dissolved = gdf.dissolve(
+            by=main_address_fields.dissolve_fields(), as_index=False
+        )
+        return dissolved[main_address_fields.fields()]
+
+    def dissolve_by_protection_forests(
+        self, gdf: gpd.GeoDataFrame
+    ) -> dict[str, gpd.GeoDataFrame]:
+        """GeoDataFrame を保護林の区分ごとにディゾルブします。
+        Args:
+            gdf(gpd.GeoDataFrame):
+                このクラスで生成された GeoDataFrame を想定しています。それ以外の GeoDataFrame
+                を渡した場合、エラーが発生します。
+        Returns:
+            dict[str, gpd.GeoDataFrame]:
+                保安林の区分ごとにディゾルブされた GeoDataFrame の辞書。
+        """
+
+        def get_unique_protection_forests(gdf: gpd.GeoDataFrame) -> list[str]:
+            """GeoDataFrameからユニークな保安林の種類を取得します。"""
+            addrs = _AddrsColumns()
+            ary = gdf[addrs.protection_forests].to_numpy().flatten()
+            unique_values = [v for v in set(ary.tolist()) if v != "-"]
+            return unique_values
+
+        def get_protection_forest_rows(
+            gdf: gpd.GeoDataFrame, protection_forest: str
+        ) -> gpd.GeoDataFrame:
+            """GeoDataFrameから指定された保安林の種類に該当する行を取得します。"""
+            addrs = _AddrsColumns()
+            pf_rows = gdf[
+                (gdf[addrs.protection_forest_1] == protection_forest)
+                | (gdf[addrs.protection_forest_2] == protection_forest)
+                | (gdf[addrs.protection_forest_3] == protection_forest)
+                | (gdf[addrs.protection_forest_4] == protection_forest)
+            ]
+            return pf_rows
+
+        pf_fields = ProtectedForestFields()
+        self.__check_geodataframe(gdf)
+        data = {}
+        for pf in get_unique_protection_forests(gdf):
+            pf_rows = get_protection_forest_rows(gdf, pf)
+            pf_rows["protected_forest_type"] = pf
+            dissolved = pf_rows.dissolve(by=pf_fields.dissolve_fields(), as_index=False)
+            data[pf] = dissolved[pf_fields.fields()]
+
+        return data
+
     def to_geojson(
         self,
         gdf: gpd.GeoDataFrame,
@@ -513,9 +625,8 @@ class GsicAddressShape(GsShapeFile):
         gdf: gpd.GeoDataFrame,
         layer: str,
         alias: bool = False,
-        output_dtype: OutputGeoPackageType | str | int = OutputGeoPackageType.GPKG,
-        **kwargs: Any,
-    ) -> GeoPackage | str:
+        gpkg: Optional[GeoPackage] = None,
+    ) -> GeoPackage:
         """
         GeoDataFrameをGeoPackage形式に変換します。
         フィールド名のエイリアスを適用したい場合は、``alias`` を ``True`` に設定し、クラス
@@ -531,13 +642,6 @@ class GsicAddressShape(GsShapeFile):
                 フィールド名のエイリアスを適用するかどうか。デフォルトは ``False`` です。
                 ``True``の場合は、Layerとして保存した後に、指定されたエイリアスを追加し、
                 FieldとAliasの対応関係を保持します。
-            output_dtype(OutputGeoPackageType, optional):
-                出力形式を指定します。デフォルトは ``OutputGeoPackageType.BYTES`` です。
-                 - 0 | OutputGeoPackageType.GPKG | 'gpkg': GeoPackageオブジェクトを返します。
-                 - 1 | OutputGeoPackageType.PATH | 'path': ファイルパスに出力します。
-            path(str, optional):
-                GeoPackageファイルの出力先パス。``OutputGeoPackageType.PATH`` を指定し
-                た場合に使用されます。
             gpkg(GeoPackage, optional):
                 GeoPackageオブジェクトを指定します。指定された場合、出力形式に関わらずこのオブジェクトに書き込まれます。
                 指定されない場合は、出力形式に応じて内部でGeoPackageオブジェクトが作成されます。
@@ -549,27 +653,12 @@ class GsicAddressShape(GsShapeFile):
             raise ValueError("GeoDataFrameのCRSが設定されていません。")
         # `gpkg`が指定されている場合はそれを使用し、そうでない場合は出力形式に応じて内部で
         # GeoPackageオブジェクトを作成する
-        if "gpkg" in kwargs:
-            gpkg = kwargs["gpkg"]
+        if gpkg is not None:
             if not isinstance(gpkg, GeoPackage):
                 raise ValueError("gpkgはGeoPackageオブジェクトで指定してください。")
+            gpkg.to_geopackage(gdf, layer=layer, alias=alias)
         else:
+            # GeoPackageオブジェクトに書き込む
             gpkg = GeoPackage(self.field_and_alias())
-        # GeoPackageオブジェクトに書き込む
-        gpkg.to_geopackage(gdf, layer=layer, alias=alias)
-        # 出力形式に応じて返す
-        if isinstance(output_dtype, int):
-            output_dtype = OutputGeoPackageType(output_dtype)
-        elif isinstance(output_dtype, str):
-            output_dtype = OutputGeoPackageType[output_dtype.upper()]
-
-        if output_dtype == OutputGeoPackageType.GPKG:
-            return gpkg
-        elif output_dtype == OutputGeoPackageType.PATH and "path" in kwargs:
-            path = kwargs["path"]
-            if not isinstance(path, str):
-                raise ValueError("pathは文字列で指定してください。")
-            gpkg.save(path)
-            return path
-        else:
-            raise ValueError(f"Unsupported output_dtype: {output_dtype}")
+            gpkg.to_geopackage(gdf, layer=layer, alias=alias)
+        return gpkg
