@@ -626,6 +626,7 @@ class GsicAddressShape(GsShapeFile):
         layer: str,
         alias: bool = False,
         gpkg: Optional[GeoPackage] = None,
+        **kwargs: Any,
     ) -> GeoPackage:
         """
         GeoDataFrameをGeoPackage形式に変換します。
@@ -645,6 +646,15 @@ class GsicAddressShape(GsShapeFile):
             gpkg(GeoPackage, optional):
                 GeoPackageオブジェクトを指定します。指定された場合、出力形式に関わらずこのオブジェクトに書き込まれます。
                 指定されない場合は、出力形式に応じて内部でGeoPackageオブジェクトが作成されます。
+        ## Kwargs:
+            - office(bool): 森林管理署の名称でディゾルブするかどうかを指定します。デフォルトは ``False`` です。
+            - branch_office(bool): 担当区の名称でディゾルブするかどうかを指定します。デフォルトは ``False`` です。
+            - locality(bool): 国有林の所在地でディゾルブするかどうかを指定します。デフォルトは ``False`` です。
+            - main_address(bool): 林班主番でディゾルブするかどうかを指定します。デフォルトは ``False`` です。
+            - protection_forests(bool): 保安林の区分でディゾルブするかどうかを指定します。デフォルトは ``False`` です。
+             ディゾルブする場合は、指定されたカラムでディゾルブされたGeoDataFrameがGeoPackageに書き込まれます。
+             このオプションを指定する場合は、引数の`gdf`が小班区画レベルのGeoDataFrameである必要があります。
+
         Returns:
             GeoPackageオブジェクト、バイト列、またはファイルパス。
         """
@@ -661,4 +671,48 @@ class GsicAddressShape(GsShapeFile):
             # GeoPackageオブジェクトに書き込む
             gpkg = GeoPackage(self.field_and_alias())
             gpkg.to_geopackage(gdf, layer=layer, alias=alias)
+        # `gdf`が小班区画レベルのGeoDataFrameかを確認
+        if set(gdf.columns) == set(self.fields.use_default_en_fields()):
+            sub_address_level = True
+        else:
+            sub_address_level = False
+        # ディゾルブのオプションに応じて、指定されたカラムでディゾルブされたGeoDataFrameをGeoPackageに書き込む
+        if kwargs.get("office", False):
+            if not sub_address_level:
+                raise ValueError(
+                    "ディゾルブする場合は、引数の`gdf`が小班区画レベルのGeoDataFrameである必要があります。"
+                )
+            dissolved = self.dissolve_by_office(gdf)
+            self.to_geopackage(dissolved, layer="office", alias=alias, gpkg=gpkg)
+        if kwargs.get("branch_office", False):
+            if not sub_address_level:
+                raise ValueError(
+                    "ディゾルブする場合は、引数の`gdf`が小班区画レベルのGeoDataFrameである必要があります。"
+                )
+            dissolved = self.dissolve_by_branch_office(gdf)
+            self.to_geopackage(dissolved, layer="branch_office", alias=alias, gpkg=gpkg)
+        if kwargs.get("locality", False):
+            if not sub_address_level:
+                raise ValueError(
+                    "ディゾルブする場合は、引数の`gdf`が小班区画レベルのGeoDataFrameである必要があります。"
+                )
+            dissolved = self.dissolve_by_locality(gdf)
+            self.to_geopackage(dissolved, layer="locality", alias=alias, gpkg=gpkg)
+        if kwargs.get("main_address", False):
+            if not sub_address_level:
+                raise ValueError(
+                    "ディゾルブする場合は、引数の`gdf`が小班区画レベルのGeoDataFrameである必要があります。"
+                )
+            dissolved = self.dissolve_by_main_address(gdf)
+            self.to_geopackage(dissolved, layer="main_address", alias=alias, gpkg=gpkg)
+        if kwargs.get("protection_forests", False):
+            if not sub_address_level:
+                raise ValueError(
+                    "ディゾルブする場合は、引数の`gdf`が小班区画レベルのGeoDataFrameである必要があります。"
+                )
+            dissolved_dict = self.dissolve_by_protection_forests(gdf)
+            for pf, dissolved in dissolved_dict.items():
+                layer_name = f"protection_forest_{pf}"
+                self.to_geopackage(dissolved, layer=layer_name, alias=alias, gpkg=gpkg)
+
         return gpkg
