@@ -1,6 +1,5 @@
 # ───────────────────────────────────────────────────────────────────────────────
 # G空間センターで公開されている国有林GISデータの属性名と、変換後の属性名の対応データです。
-
 address:
   # 小班区画データの属性名と、変換後の属性名の対応データです。
   県市町村: 
@@ -192,168 +191,93 @@ dissolved:
     森林管理局:
       ja: 森林管理局
       en: authority
-      dtype: String
-      default: "-"
-      agg: first
     森林管理署:
       ja: 森林管理署
       en: office
-      dtype: String
-      default: "-"
-      agg: first
     geometry:
       ja: geometry
       en: geometry
-      dtype: Geometry
-      default: null
-      agg: null
   
   branch_office:
     # 森林事務所担当区域データの属性名と、変換後の属性名の対応データです。
     森林管理局:
       ja: 森林管理局
       en: authority
-      dtype: String
-      default: "-"
-      agg: first
     森林管理署:
       ja: 森林管理署
       en: office
-      dtype: String
-      default: "-"
-      agg: first
     担当区:
       ja: 担当区
       en: branch_office
-      dtype: String
-      default: "-"
-      agg: first
     geometry:
       ja: geometry
       en: geometry
-      dtype: Geometry
-      default: null
-      agg: null
   
   locality:
     # 国有林名データの属性名と、変換後の属性名の対応データです。
     森林管理局:
       ja: 森林管理局
       en: authority
-      dtype: String
-      default: "-"
-      agg: first
     森林管理署:
       ja: 森林管理署
       en: office
-      dtype: String
-      default: "-"
-      agg: first
     担当区:
       ja: 担当区
       en: branch_office
-      dtype: String
-      default: "-"
-      agg: first
     国有林名:
       ja: 国有林名
       en: locality
-      dtype: String
-      default: "-"
-      agg: first
     geometry:
       ja: geometry
       en: geometry
-      dtype: Geometry
-      default: null
-      agg: null
 
   main_address:
     # 林班区画データの属性名と、変換後の属性名の対応データです。
     森林管理局:
       ja: 森林管理局
       en: authority
-      dtype: String
-      default: "-"
-      agg: first
     森林管理署:
       ja: 森林管理署
       en: office
-      dtype: String
-      default: "-"
-      agg: first
     担当区:
       ja: 担当区
       en: branch_office
-      dtype: String
-      default: "-"
-      agg: first
     国有林名:
       ja: 国有林名
       en: locality
-      dtype: String
-      default: "-"
-      agg: first
     林班主番:
         ja: 林班主番
         en: main_address
-        dtype: Integer
-        default: 0
-        agg: first
     林班枝番: 
         ja: 林班枝番
         en: main_address_2
-        dtype: Integer
-        default: 0
-        agg: first
-    小班数:
-        ja: 小班数
-        en: address_count
-        dtype: Integer
-        default: 0
-        agg: first
     geometry:
       ja: geometry
       en: geometry
-      dtype: Geometry
-      default: null
-      agg: null
   
   protected_forest:
     # 保安林データの属性名と、変換後の属性名の対応データです。
     森林管理局:
       ja: 森林管理局
       en: authority
-      dtype: String
-      default: "-"
-      agg: first
     森林管理署:
       ja: 森林管理署
       en: office
-      dtype: String
-      default: "-"
-      agg: first
     担当区:
       ja: 担当区
       en: branch_office
-      dtype: String
-      default: "-"
-      agg: first
     国有林名:
       ja: 国有林名
       en: locality
-      dtype: String
-      default: "-"
-      agg: first
+    林班主番:
+      ja: 林班主番
+      en: main_address
+    林班枝番: 
+      ja: 林班枝番
+      en: main_address_2
     保安林種別:
       ja: 保安林種別
       en: protected_forest_type
-      dtype: String
-      default: "-"
-      agg: first
     geometry:
       ja: geometry
       en: geometry
-      dtype: Geometry
-      default: null
-      agg: null

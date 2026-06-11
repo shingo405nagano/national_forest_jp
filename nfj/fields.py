@@ -2,7 +2,14 @@ from typing import Any, Optional
 
 import pydantic
 
-from .config import ADDRESS_FIELDS, FOREST_ROAD_FIELDS  # noqa: F401
+from .config import (
+    ADDRESS_FIELDS,
+    BRANCH_OFFICE_FIELDS,
+    LOCALITY_FIELDS,
+    MAIN_ADDRESS_FIELDS,
+    OFFICE_FIELDS,
+    PROTECTED_FOREST_FIELDS,
+)
 from .logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -138,3 +145,42 @@ class _AddrsColumns(object):
     def __getattr__(self, name: str) -> str:
         # Pylance向け: ADDRESS_FIELDS由来の動的属性は文字列として扱う
         return name
+
+
+class BaseDissolveFields(object):
+    def __init__(self, fields: dict[str, dict[str, str]]):
+        self.fields = []
+        self.aliases = []
+        self.field_and_aliases = {}
+        self.dissolve_fields = []
+        for _, item in fields.items():
+            self.fields.append(item["en"])
+            self.aliases.append(item["ja"])
+            self.field_and_aliases[item["en"]] = item["ja"]
+
+        self.dissolve_fields = [field for field in self.fields if field != "geometry"]
+
+
+class OfficeFields(BaseDissolveFields):
+    def __init__(self):
+        super().__init__(fields=OFFICE_FIELDS)
+
+
+class BranchOfficeFields(BaseDissolveFields):
+    def __init__(self):
+        super().__init__(fields=BRANCH_OFFICE_FIELDS)
+
+
+class LocalityFields(BaseDissolveFields):
+    def __init__(self):
+        super().__init__(fields=LOCALITY_FIELDS)
+
+
+class MainAddressFields(BaseDissolveFields):
+    def __init__(self):
+        super().__init__(fields=MAIN_ADDRESS_FIELDS)
+
+
+class ProtectedForestFields(BaseDissolveFields):
+    def __init__(self):
+        super().__init__(fields=PROTECTED_FOREST_FIELDS)
