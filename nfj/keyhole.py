@@ -3,6 +3,7 @@ from uuid import uuid4
 
 import fastkml
 import geopandas as gpd
+import pydantic
 import pygeoif
 import shapely
 from fastkml.enums import AltitudeMode
@@ -34,6 +35,189 @@ def hex_to_abgr(hex_str: str, alpha: float = 1.0):
 
     r, g, b, a = [func(v) for v in to_rgba(hex_str, alpha)]
     return "".join([a, b, g, r])
+
+
+class KmlKwargs(pydantic.BaseModel):
+    """KML作成の引数を管理するクラス。
+
+    とりあえず小班区画のKMLを作成する場合は、このクラスのインスタンス変数を利用する。
+
+    Attributes:
+        gdf(gpd.GeoDataFrame):
+            KMLに変換するGeoDataFrame。ジオメトリ列はWGS84（EPSG:4326）である必要があります。
+        name_column(str):
+            Featureの名前に使用するカラム名。指定されたカラムがgdfに存在しない場合は、インデ
+            ックスを名前として使用します。
+        folder_name(str):
+            KMLのFolder要素の名前。指定しない場合は、"国有林データ"になります。
+        geometry_column(str):
+            ジオメトリ列の名前。デフォルトは"geometry"。
+        alias(bool):
+            属性名をエイリアスに変換するかどうか。デフォルトはTrueで、AddressFieldsクラスのfield_infoのja属性をエイリアスとして使用します。Falseの場合は、属性名をそのまま使用します。
+        line_color(str):
+            ラインの色を16進カラーコードで指定します。デフォルトは"#00c03a"（緑色）。
+        line_width(int):
+            ラインの幅を指定します。デフォルトは2。
+        line_alpha(float):
+            ラインのアルファ値を0.0～1.0の範囲で指定します。デフォルトは1.0で、完全に不透明です。
+        poly_fill_color(str):
+            ポリゴンの塗りつぶしの色を16進カラーコードで指定します。デフォルトは"#00c03a"（緑色）。
+        poly_fill_alpha(float):
+            ポリゴンの塗りつぶしのアルファ値を0.0～1.0の範囲で指定します。デフォルトは0.5で、半透明です。
+        poly_outline(bool):
+            ポリゴンの輪郭線の有無を指定します。デフォルトはTrueで、輪郭線を表示します。
+        poly_fill(bool):
+            ポリゴンの塗りつぶしの有無を指定します。デフォルトはFalseで、塗りつぶしなしです。
+        label(bool):
+            ラベルの有無を指定します。デフォルトはTrueで、ラベルを表示します。
+        label_color(str):
+            ラベルの色を16進カラーコードで指定します。デフォルトは"#ffffff"（白色）。
+        label_alpha(float):
+            ラベルのアルファ値を0.0～1.0の範囲で指定します。デフォルトは1.0で、完全に不透明です。
+        label_scale(float):
+            ラベルのスケールを指定します。デフォルトは0.5で、ラベルを表示する。
+        altitude_mode(AltitudeMode):
+            ジオメトリの高度モードを指定します。
+             - clamp_to_ground: ジオメトリを地表に沿って配置します。ジオメトリの高度は無視されます。
+             - relative_to_ground: ジオメトリの高度を地表からの相対高度として解釈します。
+             - absolute: ジオメトリの高度を地球中心からの絶対高度として解釈します。
+             - clamp_to_sea_floor: ジオメトリを海底に沿って配置します。ジオメトリの高度は無視されます。
+             - relative_to_sea_floor: ジオメトリの高度を海底からの相対高度として解釈します。`
+        extrude(bool):
+            ジオメトリの押し出しの有無を指定します。デフォルトはTrueで、ジオメトリが地表から垂直に押し出されます。
+    """
+
+    gdf: gpd.GeoDataFrame
+    name_column: str = "sub_address_name"
+    folder_name: str = "小班区画"
+    geometry_column: str = "geometry"
+    alias: bool = True
+    line_color: str = "#887f7a"
+    line_width: int = 2
+    line_alpha: float = 1.0
+    poly_fill_color: str = "#887f7a"
+    poly_fill_alpha: float = 0.0
+    poly_outline: bool = True
+    poly_fill: bool = False
+    label: bool = True
+    label_color: str = "#ffffff"
+    label_alpha: float = 1.0
+    label_scale: float = 0.5
+    altitude_mode: AltitudeMode = AltitudeMode.clamp_to_ground
+    extrude: bool = True
+    model_config = pydantic.ConfigDict(
+        validate_default=True,
+        arbitrary_types_allowed=True,
+    )
+
+    @pydantic.field_validator("gdf", mode="before")
+    def validate_gdf(cls, v):
+        if not isinstance(v, gpd.GeoDataFrame):
+            raise ValueError("`gdf`はGeoDataFrameでなければなりません。")
+        if v.crs is None:
+            raise ValueError("`gdf`のCRSが定義されていません。")
+        elif v.crs.to_epsg() != 4326:
+            logger.warning(
+                "`gdf`のCRSがEPSG:4326ではありません。ジオメトリ列をEPSG:4326に変換します。"
+            )
+            v = v.to_crs(epsg=4326)
+        return v
+
+    @pydantic.field_validator("name_column", mode="before")
+    def validate_name_column(cls, v, info):
+        gdf = info.data.get("gdf")
+        if not isinstance(v, str):
+            raise ValueError("`name_column`は文字列でなければなりません。")
+        if gdf is not None and v not in gdf.columns:
+            raise ValueError(f"`name_column`の値 '{v}' は`gdf`のカラムに存在しません。")
+        return v
+
+    @pydantic.field_validator("geometry_column", mode="before")
+    def validate_geometry_column(cls, v, info):
+        gdf = info.data.get("gdf")
+        if not isinstance(v, str):
+            raise ValueError("`geometry_column`は文字列でなければなりません。")
+        if gdf is not None and v not in gdf.columns:
+            raise ValueError(
+                f"`geometry_column`の値 '{v}' は`gdf`のカラムに存在しません。"
+            )
+        return v
+
+    @pydantic.field_validator(
+        "line_color", "poly_fill_color", "label_color", mode="before"
+    )
+    def validate_hex_color(cls, v):
+        if not isinstance(v, str):
+            raise ValueError("カラーコードは文字列でなければなりません。")
+        try:
+            to_rgba(v)
+        except ValueError:
+            raise ValueError(f"'{v}'は有効な16進カラーコードではありません。")
+        return v
+
+    @pydantic.field_validator("altitude_mode", mode="before")
+    def validate_altitude_mode(cls, v):
+        if isinstance(v, str):
+            try:
+                v = AltitudeMode[v]
+            except KeyError:
+                raise ValueError(
+                    f"'{v}'は有効なAltitudeModeの値ではありません。"
+                    "有効な値は'clamp_to_ground'、'relative_to_ground'、'absolute'"
+                    "'clamp_to_sea_floor'、'relative_to_sea_floor'のいずれかです。"
+                )
+        elif isinstance(v, int):
+            try:
+                v = AltitudeMode(v)
+            except ValueError:
+                raise ValueError(
+                    f"'{v}'は有効なAltitudeModeの値ではありません。"
+                    "有効な値は0（clamp_to_ground）、1（relative_to_ground）、2（absolute）、"
+                    "3（clamp_to_sea_floor）、4（relative_to_sea_floor）のいずれかです。"
+                )
+        if not isinstance(v, AltitudeMode):
+            raise ValueError("`altitude_mode`はAltitudeModeの値でなければなりません。")
+        return v
+
+
+class SubAddressKmlKwargs(KmlKwargs):
+    pass
+
+
+class MainAddressKmlKwargs(KmlKwargs):
+    name_column: str = "main_address"
+    folder_name: str = "林班区画"
+    line_color: str = "#65318e"
+    line_width: int = 4
+    label_color: str = "#884898"
+    label_scale: float = 1.0
+
+
+class LocalityKmlKwargs(KmlKwargs):
+    name_column: str = "locality"
+    folder_name: str = "国有林区画"
+    line_color: str = "#4d5aaf"
+    line_width: int = 4
+    label_color: str = "#4d5aaf"
+    label_scale: float = 1.5
+
+
+class BranchOfficeKmlKwargs(KmlKwargs):
+    name_column: str = "branch_office"
+    folder_name: str = "担当区"
+    line_color: str = "#0f2350"
+    line_width: int = 4
+    label_color: str = "#0f2350"
+    label_scale: float = 2.0
+
+
+class OfficeKmlKwargs(KmlKwargs):
+    name_column: str = "office"
+    folder_name: str = "森林管理署"
+    line_color: str = "#008899"
+    line_width: int = 4
+    label_color: str = "#008899"
+    label_scale: float = 2.5
 
 
 class KeyholeMarkupLanguage(object):
@@ -289,6 +473,11 @@ class KeyholeMarkupLanguage(object):
                 変換するshapelyジオメトリオブジェクト。このジオメトリは
                 WGS84（EPSG:4326）である必要があります。'Point','LineString',
                 'Polygon'、およびそれらのマルチジオメトリに対応しています。
+            altitude_mode (AltitudeMode):
+                ジオメトリの高度モード。デフォルトはclamp_to_groundで、地表に沿ってジオメトリを配置します。
+            extrude (bool):
+                ジオメトリの押し出しの有無。デフォルトはFalseで、押し出しなしです。Trueにす
+                ると、ジオメトリが地表から垂直に押し出されます。
         """
         if shapely.get_type_id(geometry) in [-1, 7]:
             raise ValueError(

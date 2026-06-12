@@ -4,6 +4,7 @@ import json
 import re
 from typing import Any, Optional
 
+import fastkml
 import geopandas as gpd
 import shapely
 
@@ -33,6 +34,15 @@ from .fields import (
     _AddrsColumns,
 )
 from .geopackage import GeoPackage
+from .keyhole import (  # noqa: F401
+    BranchOfficeKmlKwargs,
+    KeyholeMarkupLanguage,
+    KmlKwargs,
+    LocalityKmlKwargs,
+    MainAddressKmlKwargs,
+    OfficeKmlKwargs,
+    SubAddressKmlKwargs,
+)
 from .utils import txt_normalizer
 
 
@@ -716,3 +726,88 @@ class GsicAddressShape(GsShapeFile):
                 self.to_geopackage(dissolved, layer=layer_name, alias=alias, gpkg=gpkg)
 
         return gpkg
+
+    def to_kml_doc(self, kwargs: KmlKwargs) -> fastkml.Document:
+        """KmlKwargsの設定に基づいて、GeoDataFrameをKMLのDocument要素に変換します。
+
+        `label=True` の場合は、ポリゴンフォルダとラベルフォルダを親フォルダにまとめて返します。
+        `label=False` の場合は、ポリゴンフォルダのみを返します。
+
+        Args:
+            kwargs (KmlKwargs):
+                KML作成の設定を保持するオブジェクト。
+
+        Returns:
+            fastkml.Document: 変換されたDocument要素。
+
+        Example:
+            ```python
+            from nfj.geospatial imort GsicAddressShape
+            from nfj.keyhole imoprt SubAddressKmlKwargs
+
+            shp = GsicAddressShape(prefecture="滋賀県")
+            gdf = shp.geodataframe(plan_area="湖南森林計画区")
+            kml_kwargs = SubAddressKmlKwargs(gdf=gdf)
+            kml_doc = shp.to_kml_doc(kml_kwargs)
+            with open("output.kml", "w", encoding="utf-8") as f:
+                f.write(kml_doc.to_string(prettyprint=True))
+            ```
+        """
+        if not isinstance(kwargs, KmlKwargs):
+            raise ValueError("kwargsはKmlKwargsのインスタンスで指定してください。")
+
+        # `kwargs.gdf`がこのクラスで生成されたGeoDataFrameかを確認するために、列名とgeometry列の型をチェックします。
+        default_fields = self.fields.use_default_en_fields() + ["geometry"]
+        for col in kwargs.gdf.columns:
+            if col not in default_fields:
+                raise ValueError(
+                    f"kwargs.gdfの列名がこのクラスで生成されたGeoDataFrameの列名と一致しません。列名: {col}"
+                )
+
+        keyhole = KeyholeMarkupLanguage()
+
+        line_style = keyhole.create_line_style(
+            hex_color=kwargs.line_color,
+            alpha=kwargs.line_alpha,
+            width=kwargs.line_width,
+        )
+        poly_style = keyhole.create_poly_style(
+            hex_color=kwargs.poly_fill_color,
+            alpha=kwargs.poly_fill_alpha,
+            fill=kwargs.poly_fill,
+            outline=kwargs.poly_outline,
+        )
+        poly_folder = keyhole.geodataframe_to_poly_folder(
+            gdf=kwargs.gdf,
+            geometry_column=kwargs.geometry_column,
+            alias=kwargs.alias,
+            line_style=line_style,
+            poly_style=poly_style,
+            folder_name=kwargs.folder_name,
+            geometry_altitude_mode=kwargs.altitude_mode,
+            geometry_extrude=kwargs.extrude,
+            name_column=kwargs.name_column,
+        )
+
+        if not kwargs.label:
+            doc = fastkml.Document(name=kwargs.folder_name)
+            doc.append(poly_folder)
+            return doc
+
+        label_style = keyhole.create_label_style(
+            hex_color=kwargs.label_color,
+            alpha=kwargs.label_alpha,
+            scale=kwargs.label_scale,
+        )
+        label_folder = keyhole.geodataframe_to_label_folder(
+            gdf=kwargs.gdf,
+            geometry_column=kwargs.geometry_column,
+            label_style=label_style,
+            folder_name=f"{kwargs.folder_name}ラベル",
+            name_column=kwargs.name_column,
+        )
+
+        doc = fastkml.Document(name=kwargs.folder_name)
+        doc.append(poly_folder)
+        doc.append(label_folder)
+        return doc
