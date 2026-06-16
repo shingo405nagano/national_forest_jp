@@ -1,3 +1,8 @@
+import io
+import os
+import tempfile
+import zipfile
+
 import geopandas as gpd
 import pytest
 import shapely
@@ -5,6 +10,7 @@ import shapely
 from ..fetch import GsShapeFile
 from ..fields import AddressFields
 from ..geospatial import GsicAddressShape, convert_wareki_to_seireki
+from ..keyhole import Kmz
 
 
 class _DummyDateTime:
@@ -313,3 +319,123 @@ def test_query_filters_matching_rows():
 
     assert len(result) == 1
     assert result.loc[0, "city"] == "ABC"
+
+
+def test_kmz_save_creates_parent_dir_and_copies_file(tmp_path):
+    source_path = tmp_path / "source.kmz"
+    source_path.write_bytes(b"kmz-data")
+
+    kmz = Kmz.__new__(Kmz)
+    kmz.kmz_path = str(source_path)
+
+    output_path = tmp_path / "nested" / "out.kmz"
+    kmz.save(str(output_path))
+
+    assert output_path.exists()
+    assert output_path.read_bytes() == b"kmz-data"
+
+
+def test_kmz_save_from_tempfile_makes_output_readable_by_others(tmp_path):
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".kmz") as tmp_file:
+        tmp_file.write(b"kmz-data")
+        temp_kmz_path = tmp_file.name
+
+    try:
+        kmz = Kmz.__new__(Kmz)
+        kmz.kmz_path = temp_kmz_path
+
+        output_path = tmp_path / "saved_from_temp.kmz"
+        kmz.save(str(output_path))
+
+        assert output_path.exists()
+        assert output_path.read_bytes() == b"kmz-data"
+
+        mode = output_path.stat().st_mode & 0o777
+        assert mode & 0o444 == 0o444
+    finally:
+        if os.path.exists(temp_kmz_path):
+            os.remove(temp_kmz_path)
+
+
+def test_to_kmz_returns_bytesio_when_requested(monkeypatch):
+    shape_file = _make_shape_file()
+    gdf = gpd.GeoDataFrame(
+        {"geometry": [shapely.Point(0, 0)]}, geometry="geometry", crs="EPSG:4326"
+    )
+
+    monkeypatch.setattr(
+        shape_file,
+        "_GsicAddressShape__check_geodataframe",
+        lambda _: None,
+    )
+    monkeypatch.setattr("nfj.geospatial.SubAddressKmlKwargs", lambda gdf: object())
+    monkeypatch.setattr(shape_file, "to_kml_doc", lambda kwargs: object())
+
+    created_paths = []
+
+    class FakeKmz:
+        def __init__(self, name, document_list):
+            self.name = name
+            self.document_list = document_list
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".kmz") as tmp_file:
+                with zipfile.ZipFile(tmp_file, mode="w") as zf:
+                    zf.writestr("doc.kml", "<kml/>")
+                self.kmz_path = tmp_file.name
+            created_paths.append(self.kmz_path)
+
+    monkeypatch.setattr("nfj.geospatial.Kmz", FakeKmz)
+
+    memory_file = shape_file.to_kmz(
+        gdf,
+        main_address=False,
+        locality=False,
+        branch_office=False,
+        office=False,
+        return_memory_file=True,
+    )
+
+    try:
+        assert isinstance(memory_file, io.BytesIO)
+        assert memory_file.tell() == 0
+
+        with zipfile.ZipFile(memory_file) as zf:
+            assert "doc.kml" in zf.namelist()
+    finally:
+        for path in created_paths:
+            if os.path.exists(path):
+                os.remove(path)
+
+
+def test_to_kmz_returns_kmz_object_by_default(monkeypatch):
+    shape_file = _make_shape_file()
+    gdf = gpd.GeoDataFrame(
+        {"geometry": [shapely.Point(0, 0)]}, geometry="geometry", crs="EPSG:4326"
+    )
+
+    monkeypatch.setattr(
+        shape_file,
+        "_GsicAddressShape__check_geodataframe",
+        lambda _: None,
+    )
+    monkeypatch.setattr("nfj.geospatial.SubAddressKmlKwargs", lambda gdf: object())
+    monkeypatch.setattr(shape_file, "to_kml_doc", lambda kwargs: object())
+
+    class FakeKmz:
+        def __init__(self, name, document_list):
+            self.name = name
+            self.document_list = document_list
+            self.kmz_path = "dummy.kmz"
+
+    monkeypatch.setattr("nfj.geospatial.Kmz", FakeKmz)
+
+    result = shape_file.to_kmz(
+        gdf,
+        main_address=False,
+        locality=False,
+        branch_office=False,
+        office=False,
+        return_memory_file=False,
+    )
+
+    assert isinstance(result, FakeKmz)
+    assert result.name == "国有林区画データ"
