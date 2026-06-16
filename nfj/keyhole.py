@@ -1,12 +1,17 @@
+import os
+import shutil
+import tempfile
+import zipfile
 from typing import Any, Optional, cast
 from uuid import uuid4
+from xml.dom import minidom  # noqa: F401
 
 import fastkml
 import geopandas as gpd
 import pydantic
 import pygeoif
 import shapely
-from fastkml.enums import AltitudeMode
+from fastkml.enums import AltitudeMode, Units
 from matplotlib.colors import to_rgba
 from pygeoif.types import GeoCollectionInterface, GeoInterface
 
@@ -14,6 +19,13 @@ from .fields import AddressFields
 from .logging_config import get_logger
 
 logger = get_logger(__name__)
+
+global OVERLAY_IMG
+OVERLAY_IMG = os.path.join(
+    os.path.dirname(__file__), ".confs", "google_earth_screen_overlay.png"
+)
+global ATOM_LINK_HREF
+ATOM_LINK_HREF = "https://github.com/shingo405nagano/national_forest_jp.git"
 
 
 def hex_to_abgr(hex_str: str, alpha: float = 1.0):
@@ -102,7 +114,7 @@ class KmlKwargs(pydantic.BaseModel):
     label: bool = True
     label_color: str = "#ffffff"
     label_alpha: float = 1.0
-    label_scale: float = 0.5
+    label_scale: float = 0.8
     altitude_mode: AltitudeMode = AltitudeMode.clamp_to_ground
     extrude: bool = True
     model_config = pydantic.ConfigDict(
@@ -190,16 +202,16 @@ class MainAddressKmlKwargs(KmlKwargs):
     line_color: str = "#65318e"
     line_width: int = 4
     label_color: str = "#884898"
-    label_scale: float = 1.0
+    label_scale: float = 1.2
 
 
 class LocalityKmlKwargs(KmlKwargs):
     name_column: str = "locality"
     folder_name: str = "国有林区画"
-    line_color: str = "#4d5aaf"
+    line_color: str = "#9900ff"
     line_width: int = 4
-    label_color: str = "#4d5aaf"
-    label_scale: float = 1.5
+    label_color: str = "#9900ff"
+    label_scale: float = 1.7
 
 
 class BranchOfficeKmlKwargs(KmlKwargs):
@@ -682,3 +694,121 @@ class KeyholeMarkupLanguage(object):
             )
             folder.append(placemark)
         return folder
+
+
+class Kmz(object):
+    """
+    KMZ形式のデータを扱うクラス。
+        - KMZは、KMLファイルと関連するリソース（画像やスタイルファイルなど）をZIP形式でまと
+          めたファイルフォーマットです。Google EarthやGoogle MapsなどのGISソフトウェアで
+          広く使用されています。
+        - ここに渡すdocument_listは、fastkml.Documentクラスのインスタンスのリストを想定
+          しています。それ以外のリストを渡すと、意図しない動作をする可能性があります。
+
+    Args:
+        name (str):
+            KMZファイルの名前。フォルダ名として表示されます。
+        document_list (list[fastkml.Document]):
+            KMZファイルに含めるDocument要素のリスト。各Document要素は、KMLドキュメントの
+            ルート要素である必要があります。
+    Example:
+        ```
+        import fastkml
+        from nfj.keyhole import Kmz
+        ...
+        doc = fastkml.Document()
+        doc2 = fastkml.Document()
+        ...
+        kmz = Kmz(name="国有林データ", document_list=[doc, doc2])
+        kmz.save("output.kmz")
+        ...
+        # 作成した一時ファイルの確認
+        print(kmz.kml_path)  # 'doc.kml'の一時ファイルのパス
+        print(kmz.kmz_path)  # KMZファイルの一時ファイルのパス
+        ...
+        # 一時ファイルの削除
+        kmz.delete_temp_file()
+        ```
+    """
+
+    def __init__(self, name: str, document_list: list[fastkml.Document]):
+        self.name = name
+        self.document_list = document_list
+        # 複数のDocument要素をFolder要素にまとめて'KMZ'の元となる'doc.kml'を作成する
+        self.kml = fastkml.KML()
+        folder = fastkml.Folder(
+            name=self.name,
+            atom_link=fastkml.AtomLink(href=ATOM_LINK_HREF),
+        )
+        screen_overlay = self.create_screen_overlay()
+        folder.append(screen_overlay)
+        for doc in self.document_list:
+            if not isinstance(doc, fastkml.Document):
+                raise ValueError(
+                    "`document_list`の要素はすべてfastkml.Documentのインスタンスでなければなりません。"
+                )
+            folder.append(doc)
+        self.kml.append(folder)
+        # 'doc.kml'を一時ファイルに保存する
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".kml") as tmp_file:
+            raw_xml = self.kml.to_string(prettyprint=True)
+            pretty_kml = minidom.parseString(raw_xml.encode("utf-8"))
+            tmp_file.write(pretty_kml.toprettyxml(indent="  ").encode("utf-8"))
+            self.kml_path = tmp_file.name
+
+        # 'doc.kml'とオーバーレイ画像を含むKMZファイルを作成する
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".kmz") as tmp_kmz:
+            with zipfile.ZipFile(tmp_kmz, mode="w") as zf:
+                zf.write(self.kml_path, arcname="doc.kml")
+                zf.write(
+                    OVERLAY_IMG,
+                    arcname="google_earth_screen_overlay.png",
+                )
+                logger.info(f"KMZファイルを作成しました: {tmp_kmz.name}")
+            self.kmz_path = tmp_kmz.name
+
+    def save(self, output_path: str):
+        if not isinstance(output_path, str):
+            raise ValueError("output_pathは文字列で指定してください。")
+
+        output_dir = os.path.dirname(output_path)
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+
+        # Temporary files are often created with mode 0o600. Avoid preserving
+        # restrictive metadata so the exported file remains broadly readable.
+        shutil.copyfile(self.kmz_path, output_path)
+        try:
+            os.chmod(output_path, 0o644)
+        except OSError:
+            pass
+        logger.info(f"KMZファイルを '{output_path}' として保存しました。")
+
+    def delete_temp_file(self):
+        for temp_path in (
+            getattr(self, "kml_path", None),
+            getattr(self, "kmz_path", None),
+        ):
+            if temp_path and os.path.exists(temp_path):
+                os.remove(temp_path)
+
+    def create_screen_overlay(self) -> fastkml.ScreenOverlay:
+        """Google Earthの画面上に表示するScreenOverlay要素を作成して返す。
+
+        画面の左下に、国有林データに関する情報を表示させるタグを作成するための関数です。
+        """
+        screen_overlay = fastkml.ScreenOverlay(
+            name="データに関して",
+            icon=fastkml.Icon(href=os.path.basename(OVERLAY_IMG)),
+            overlay_xy=fastkml.OverlayXY(
+                x=0, y=0, x_units=Units.fraction, y_units=Units.fraction
+            ),
+            screen_xy=fastkml.ScreenXY(
+                x=0.06, y=0, x_units=Units.fraction, y_units=Units.fraction
+            ),
+            rotation_xy=fastkml.RotationXY(
+                x=0, y=0, x_units=Units.fraction, y_units=Units.fraction
+            ),
+            size=fastkml.Size(x=0, y=0, x_units=Units.fraction, y_units=Units.fraction),
+        )
+        return screen_overlay

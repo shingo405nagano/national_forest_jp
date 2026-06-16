@@ -8,7 +8,7 @@ import fastkml
 import geopandas as gpd
 import shapely
 
-from .config import (  # noqa: F401
+from .config import (
     AuthorityCoding,
     BranchOfficeCoding,
     CityCoding,
@@ -34,10 +34,11 @@ from .fields import (
     _AddrsColumns,
 )
 from .geopackage import GeoPackage
-from .keyhole import (  # noqa: F401
+from .keyhole import (
     BranchOfficeKmlKwargs,
     KeyholeMarkupLanguage,
     KmlKwargs,
+    Kmz,
     LocalityKmlKwargs,
     MainAddressKmlKwargs,
     OfficeKmlKwargs,
@@ -811,3 +812,80 @@ class GsicAddressShape(GsShapeFile):
         doc.append(poly_folder)
         doc.append(label_folder)
         return doc
+
+    def to_kmz(
+        self,
+        sub_addrs_gdf: gpd.GeoDataFrame,
+        folder_name: str = "国有林区画データ",
+        main_address: bool = True,
+        locality: bool = True,
+        branch_office: bool = False,
+        office: bool = False,
+        return_memory_file: bool = False,
+    ) -> Kmz | io.BytesIO:
+        """
+        GeoDataFrameをKMZ形式に変換します。KMZはKMLファイルをZIP圧縮したもので、Google
+        Earthなどで使用されます。
+        Args:
+            sub_addrs_gdf(gpd.GeoDataFrame):
+                KMZ形式に変換する対象のGeoDataFrame。小班区画レベルのGeoDataFrameである
+                必要があります。それ以外のGeoDataFrameを渡した場合、意図しない結果になる可
+                能性があります。
+            folder_name(str, optional):
+                KMZ内のフォルダ名を指定します。デフォルトは "国有林区画データ" です。
+            main_address(bool, optional):
+                林班主番でディゾルブするかどうかを指定します。デフォルトは ``True`` です。
+            locality(bool, optional):
+                国有林名でディゾルブするかどうかを指定します。デフォルトは ``True`` です。
+            branch_office(bool, optional):
+                担当区でディゾルブするかどうかを指定します。デフォルトは ``False`` です。
+            office(bool, optional):
+                森林管理署でディゾルブするかどうかを指定します。デフォルトは ``False`` です。
+            return_memory_file(bool, optional):
+                KMZファイルをメモリ上のファイルオブジェクトとして返すかどうかを指定します。
+                デフォルトは ``False`` で、KMZオブジェクトが返されます。``True`` に設定した場合、
+                `io.BytesIO` オブジェクトが返されます。
+        Returns:
+            Kmz | io.BytesIO:
+                変換されたKMZオブジェクト。``return_memory_file=True`` の場合は
+                ``io.BytesIO`` オブジェクト。
+        Example:
+            ```python
+            from nfj.geospatial import GsicAddressShape
+
+            shp = GsicAddressShape(prefecture="滋賀県")
+            gdf = shp.geodataframe(plan_area="湖南森林計画区")
+            kmz = shp.to_kmz(gdf, folder_name="湖南森林計画区データ", main_address=True, locality=True)
+            kmz.save("output.kmz")
+            ```
+        """
+        self.__check_geodataframe(sub_addrs_gdf)
+
+        sub_addrs_kwargs = SubAddressKmlKwargs(gdf=sub_addrs_gdf)
+        docs = [self.to_kml_doc(sub_addrs_kwargs)]
+        if main_address:
+            main_address_gdf = self.dissolve_by_main_address(sub_addrs_gdf)
+            main_address_kwargs = MainAddressKmlKwargs(gdf=main_address_gdf)
+            docs.append(self.to_kml_doc(main_address_kwargs))
+        if locality:
+            locality_gdf = self.dissolve_by_locality(sub_addrs_gdf)
+            locality_kwargs = LocalityKmlKwargs(gdf=locality_gdf)
+            docs.append(self.to_kml_doc(locality_kwargs))
+        if branch_office:
+            branch_office_gdf = self.dissolve_by_branch_office(sub_addrs_gdf)
+            branch_office_kwargs = BranchOfficeKmlKwargs(gdf=branch_office_gdf)
+            docs.append(self.to_kml_doc(branch_office_kwargs))
+        if office:
+            office_gdf = self.dissolve_by_office(sub_addrs_gdf)
+            office_kwargs = OfficeKmlKwargs(gdf=office_gdf)
+            docs.append(self.to_kml_doc(office_kwargs))
+
+        kmz = Kmz(name=folder_name, document_list=docs)
+        if return_memory_file:
+            # KMZオブジェクトをメモリ上のファイルオブジェクトとして返す
+            memory_file = io.BytesIO()
+            with open(kmz.kmz_path, "rb") as f:
+                memory_file.write(f.read())
+            memory_file.seek(0)
+            return memory_file
+        return kmz
