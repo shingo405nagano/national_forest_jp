@@ -667,60 +667,54 @@ class GsicAddressShape(GsShapeFile):
              このオプションを指定する場合は、引数の`gdf`が小班区画レベルのGeoDataFrameである必要があります。
 
         Returns:
-            GeoPackageオブジェクト、バイト列、またはファイルパス。
+            GeoPackageオブジェクト。
         """
         # CRSの確認
         if gdf.crs is None:
             raise ValueError("GeoDataFrameのCRSが設定されていません。")
+        if gpkg is not None and not isinstance(gpkg, GeoPackage):
+            raise ValueError("gpkgはGeoPackageオブジェクトで指定してください。")
+
+        dissolve_requested = any(
+            kwargs.get(key, False)
+            for key in (
+                "office",
+                "branch_office",
+                "locality",
+                "main_address",
+                "protection_forests",
+            )
+        )
+
+        # `gdf`が小班区画レベルのGeoDataFrameかを確認
+        sub_address_level = set(gdf.columns) == set(self.fields.use_default_en_fields())
+        if dissolve_requested and not sub_address_level:
+            raise ValueError(
+                "ディゾルブする場合は、引数の`gdf`が小班区画レベルのGeoDataFrameである必要があります。"
+            )
+
         # `gpkg`が指定されている場合はそれを使用し、そうでない場合は出力形式に応じて内部で
         # GeoPackageオブジェクトを作成する
         if gpkg is not None:
-            if not isinstance(gpkg, GeoPackage):
-                raise ValueError("gpkgはGeoPackageオブジェクトで指定してください。")
             gpkg.to_geopackage(gdf, layer=layer, alias=alias)
         else:
             # GeoPackageオブジェクトに書き込む
             gpkg = GeoPackage(self.field_and_alias())
             gpkg.to_geopackage(gdf, layer=layer, alias=alias)
-        # `gdf`が小班区画レベルのGeoDataFrameかを確認
-        if set(gdf.columns) == set(self.fields.use_default_en_fields()):
-            sub_address_level = True
-        else:
-            sub_address_level = False
         # ディゾルブのオプションに応じて、指定されたカラムでディゾルブされたGeoDataFrameをGeoPackageに書き込む
         if kwargs.get("office", False):
-            if not sub_address_level:
-                raise ValueError(
-                    "ディゾルブする場合は、引数の`gdf`が小班区画レベルのGeoDataFrameである必要があります。"
-                )
             dissolved = self.dissolve_by_office(gdf)
             self.to_geopackage(dissolved, layer="office", alias=alias, gpkg=gpkg)
         if kwargs.get("branch_office", False):
-            if not sub_address_level:
-                raise ValueError(
-                    "ディゾルブする場合は、引数の`gdf`が小班区画レベルのGeoDataFrameである必要があります。"
-                )
             dissolved = self.dissolve_by_branch_office(gdf)
             self.to_geopackage(dissolved, layer="branch_office", alias=alias, gpkg=gpkg)
         if kwargs.get("locality", False):
-            if not sub_address_level:
-                raise ValueError(
-                    "ディゾルブする場合は、引数の`gdf`が小班区画レベルのGeoDataFrameである必要があります。"
-                )
             dissolved = self.dissolve_by_locality(gdf)
             self.to_geopackage(dissolved, layer="locality", alias=alias, gpkg=gpkg)
         if kwargs.get("main_address", False):
-            if not sub_address_level:
-                raise ValueError(
-                    "ディゾルブする場合は、引数の`gdf`が小班区画レベルのGeoDataFrameである必要があります。"
-                )
             dissolved = self.dissolve_by_main_address(gdf)
             self.to_geopackage(dissolved, layer="main_address", alias=alias, gpkg=gpkg)
         if kwargs.get("protection_forests", False):
-            if not sub_address_level:
-                raise ValueError(
-                    "ディゾルブする場合は、引数の`gdf`が小班区画レベルのGeoDataFrameである必要があります。"
-                )
             dissolved_dict = self.dissolve_by_protection_forests(gdf)
             for pf, dissolved in dissolved_dict.items():
                 layer_name = f"protection_forest_{pf}"
@@ -884,8 +878,11 @@ class GsicAddressShape(GsShapeFile):
         if return_memory_file:
             # KMZオブジェクトをメモリ上のファイルオブジェクトとして返す
             memory_file = io.BytesIO()
-            with open(kmz.kmz_path, "rb") as f:
-                memory_file.write(f.read())
-            memory_file.seek(0)
-            return memory_file
+            try:
+                with open(kmz.kmz_path, "rb") as f:
+                    memory_file.write(f.read())
+                memory_file.seek(0)
+                return memory_file
+            finally:
+                kmz.delete_temp_file()
         return kmz

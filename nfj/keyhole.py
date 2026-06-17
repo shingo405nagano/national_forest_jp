@@ -617,6 +617,7 @@ class KeyholeMarkupLanguage(object):
             data_list = []
             for name, value in row_data.to_dict().items():
                 name = str(name)
+                display = None
 
                 if alias:
                     if name in en_fields:

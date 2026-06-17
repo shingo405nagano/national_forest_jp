@@ -67,11 +67,15 @@ class GeoPackage(object):
             output_path(str):
                 保存先のファイルパス。例: "output.gpkg"
         """
-        if isinstance(output_path, str):
-            shutil.copy(self.temp_file_path, output_path)
-            logger.info(f"GeoPackageファイルが '{output_path}' として保存されました。")
-        else:
+        if not isinstance(output_path, str):
             raise ValueError("output_pathは文字列で指定してください。")
+
+        output_dir = os.path.dirname(output_path)
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+
+        shutil.copy(self.temp_file_path, output_path)
+        logger.info(f"GeoPackageファイルが '{output_path}' として保存されました。")
 
     def delete_temp_file(self):
         if os.path.exists(self.temp_file_path):
@@ -81,6 +85,7 @@ class GeoPackage(object):
         logger.info(
             f"GeoPackageファイルのテーブル'{table_name}'にエイリアスを追加します。"
         )
+        conn = None
         try:
             conn = sqlite3.connect(self.temp_file_path)
             cursor = conn.cursor()
@@ -172,6 +177,7 @@ class GeoPackage(object):
 
         except sqlite3.Error as e:
             logger.error(f"データベースエラーが発生しました: {e}")
+            raise
         finally:
             if conn:
                 conn.close()
