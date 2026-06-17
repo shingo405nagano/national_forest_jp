@@ -9,6 +9,7 @@ import shapely
 
 from ..fetch import GsShapeFile
 from ..fields import AddressFields
+from ..geopackage import GeoPackage
 from ..geospatial import GsicAddressShape, convert_wareki_to_seireki
 from ..keyhole import Kmz
 
@@ -372,6 +373,7 @@ def test_to_kmz_returns_bytesio_when_requested(monkeypatch):
     monkeypatch.setattr(shape_file, "to_kml_doc", lambda kwargs: object())
 
     created_paths = []
+    deleted_paths = []
 
     class FakeKmz:
         def __init__(self, name, document_list):
@@ -382,6 +384,11 @@ def test_to_kmz_returns_bytesio_when_requested(monkeypatch):
                     zf.writestr("doc.kml", "<kml/>")
                 self.kmz_path = tmp_file.name
             created_paths.append(self.kmz_path)
+
+        def delete_temp_file(self):
+            deleted_paths.append(self.kmz_path)
+            if os.path.exists(self.kmz_path):
+                os.remove(self.kmz_path)
 
     monkeypatch.setattr("nfj.geospatial.Kmz", FakeKmz)
 
@@ -394,16 +401,15 @@ def test_to_kmz_returns_bytesio_when_requested(monkeypatch):
         return_memory_file=True,
     )
 
-    try:
-        assert isinstance(memory_file, io.BytesIO)
-        assert memory_file.tell() == 0
+    assert isinstance(memory_file, io.BytesIO)
+    assert memory_file.tell() == 0
 
-        with zipfile.ZipFile(memory_file) as zf:
-            assert "doc.kml" in zf.namelist()
-    finally:
-        for path in created_paths:
-            if os.path.exists(path):
-                os.remove(path)
+    with zipfile.ZipFile(memory_file) as zf:
+        assert "doc.kml" in zf.namelist()
+
+    assert deleted_paths == created_paths
+    for path in created_paths:
+        assert not os.path.exists(path)
 
 
 def test_to_kmz_returns_kmz_object_by_default(monkeypatch):
@@ -439,3 +445,27 @@ def test_to_kmz_returns_kmz_object_by_default(monkeypatch):
 
     assert isinstance(result, FakeKmz)
     assert result.name == "国有林区画データ"
+
+
+def test_to_geopackage_validates_before_writing_when_dissolve_requested(monkeypatch):
+    shape_file = _make_shape_file()
+    gdf = gpd.GeoDataFrame(
+        {"x": [1], "geometry": [shapely.Point(0, 0)]},
+        geometry="geometry",
+        crs="EPSG:4326",
+    )
+    gpkg = GeoPackage()
+    calls = {"to_geopackage": 0}
+
+    def fake_to_geopackage(_gdf, layer, alias=False):
+        calls["to_geopackage"] += 1
+
+    monkeypatch.setattr(gpkg, "to_geopackage", fake_to_geopackage)
+
+    try:
+        with pytest.raises(ValueError):
+            shape_file.to_geopackage(gdf, layer="sub_address", gpkg=gpkg, office=True)
+
+        assert calls["to_geopackage"] == 0
+    finally:
+        gpkg.delete_temp_file()

@@ -22,11 +22,25 @@ def test_save_copies_temp_file_to_output(tmp_path):
             f.write(b"gpkg-data")
 
         output_path = tmp_path / "nested" / "output.gpkg"
-        output_path.parent.mkdir(parents=True, exist_ok=True)
         gpkg.save(str(output_path))
 
         assert output_path.exists()
         assert output_path.read_bytes() == b"gpkg-data"
+    finally:
+        gpkg.delete_temp_file()
+
+
+def test_add_alias_reraises_sqlite_error(monkeypatch):
+    gpkg = GeoPackage()
+
+    def fake_connect(_):
+        raise sqlite3.Error("boom")
+
+    monkeypatch.setattr(sqlite3, "connect", fake_connect)
+
+    try:
+        with pytest.raises(sqlite3.Error, match="boom"):
+            gpkg.add_alias("layer_a", {"field1": "別名1"})
     finally:
         gpkg.delete_temp_file()
 

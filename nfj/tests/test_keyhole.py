@@ -114,6 +114,23 @@ def test_geodataframe_to_poly_folder_builds_folder_with_feature():
     assert "A-1" in text
 
 
+def test_geodataframe_to_poly_folder_accepts_alias_false():
+    keyhole = KeyholeMarkupLanguage()
+    gdf = _make_polygon_gdf()
+
+    folder = keyhole.geodataframe_to_poly_folder(
+        gdf=gdf,
+        geometry_column="geometry",
+        alias=False,
+        folder_name="no-alias",
+        name_column="sub_address_name",
+    )
+
+    text = folder.to_string(prettyprint=False)
+    assert "no-alias" in text
+    assert "A-1" in text
+
+
 def test_geodataframe_to_label_folder_builds_label_feature():
     keyhole = KeyholeMarkupLanguage()
     gdf = _make_polygon_gdf()
