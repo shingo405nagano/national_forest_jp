@@ -22,16 +22,21 @@ import os
 
 from nfj.geospatial import GsicAddressShape
 
+# ------------------------------------------------------------------------------
 # 1. データの取得
 # ``prefecture="XXX"``で指定した都道府県のデータをダウンロードします。
 select_prefecture = "青森県"
 shp = GsicAddressShape(prefecture=select_prefecture)
 
+
+# ------------------------------------------------------------------------------
 # 2. 森林計画区域のジオデータフレームを取得
 # 森林計画区域の名前を指定して、ジオデータフレームを取得します。
 gdf = shp.geodataframe(plan_area="津軽森林計画区")
 print(f"GeoDataFrameのサイズ: {gdf.shape}")
 
+
+# ------------------------------------------------------------------------------
 # 3. 地域や林班での絞り込み
 # 地域での絞り込み
 select_1 = {
@@ -48,6 +53,7 @@ selected_2_gdf = shp.query(gdf, **select_2)
 print(f"林班で選択されたGeoDataFrameのサイズ: {selected_2_gdf.shape}")
 
 
+# ------------------------------------------------------------------------------
 # 4. GeoPackage形式やKML/KMZ形式に変換して保存
 # GeoPackage形式に変換して保存する例
 del select_1["locality"]  # localityを削除して、officeとbranch_officeで絞り込み
@@ -72,6 +78,8 @@ gpkg.save("nfj_example.gpkg")
 if os.path.exists("nfj_example.gpkg"):
     print("GeoPackage形式で保存しました。")
 
+
+# ------------------------------------------------------------------------------
 # KML形式に変換して保存する例
 # SubAddressKmlKwargs
 from xml.dom import minidom
@@ -97,6 +105,8 @@ with open("nfj_example.kml", "w", encoding="utf-8") as f:
 if os.path.exists("nfj_example.kml"):
     print("KML形式で保存しました。")
 
+
+# ------------------------------------------------------------------------------
 # KMZ形式に変換して保存する例
 kmz = shp.to_kmz(
     selected_gdf,
