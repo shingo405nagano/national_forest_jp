@@ -4,7 +4,7 @@ import tempfile
 import zipfile
 from typing import Any, Optional, cast
 from uuid import uuid4
-from xml.dom import minidom  # noqa: F401
+from xml.dom import minidom
 
 import fastkml
 import geopandas as gpd
