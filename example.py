@@ -152,3 +152,16 @@ if isinstance(kmz, Kmz):
     kmz.save("nfj_example.kmz")
     if os.path.exists("nfj_example.kmz"):
         print("KMZ形式で保存しました。")
+
+
+"""-----------------------------------------------------------------------------
+4-4. GeoJSON形式で保存
+GeoJSONは地理空間データをJSON形式で表現するためのフォーマットです。WebアプリケーションやGIS
+ソフトウェアで広くサポートされています。
+"""
+geoj_string = shp.to_geojson(selected_gdf, alias=False, output_dtype="string")
+with open("nfj_example.geojson", "w", encoding="utf-8") as f:
+    if isinstance(geoj_string, str):
+        f.write(geoj_string)
+if os.path.exists("nfj_example.geojson"):
+    print("GeoJSON形式で保存しました。")
