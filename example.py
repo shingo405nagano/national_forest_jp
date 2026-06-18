@@ -14,7 +14,7 @@ Example of GsicAddressShape.
 
  3. 取得したジオデータフレームを、地域や林班などの条件で絞り込みます。
 
- 4. 絞り込んだジオデータフレームを、GeoPackage形式やKML/KMZ形式に変換して保存します。
+ 4. 絞り込んだジオデータフレームを任意のフォーマットで保存します。
 
 """
 
@@ -165,3 +165,18 @@ with open("nfj_example.geojson", "w", encoding="utf-8") as f:
         f.write(geoj_string)
 if os.path.exists("nfj_example.geojson"):
     print("GeoJSON形式で保存しました。")
+
+
+"""-----------------------------------------------------------------------------
+4-5. ESRI Shapefile形式で保存
+ESRI Shapefileは、Field名の要領などに制約がある為、おススメはしませんが、必要に応じて、
+`GsicAddressShape`クラスの`to_esri_shape_file`メソッドを使用することで、出力することがで
+きます。
+"""
+mem_zip = shp.to_esri_shape_file(
+    selected_gdf, main_address=True, locality=True, branch_office=False, office=False
+)
+with open("nfj_example.zip", "wb") as f:
+    f.write(mem_zip.getvalue())
+    if os.path.exists("nfj_example.zip"):
+        print("ESRI Shapefile形式で保存しました。")
