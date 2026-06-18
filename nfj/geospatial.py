@@ -2,10 +2,14 @@ import datetime
 import io
 import json
 import re
+import tempfile
+import zipfile
+from pathlib import Path
 from typing import Any, Optional
 
 import fastkml
 import geopandas as gpd
+import pandas as pd
 import shapely
 
 from .config import (
@@ -25,6 +29,7 @@ from .config import (
 from .enums import OutputGeoJsonType
 from .fetch import GsShapeFile
 from .fields import (
+    AddressFields,
     BranchOfficeFields,
     FieldInfo,
     LocalityFields,
@@ -886,3 +891,110 @@ class GsicAddressShape(GsShapeFile):
             finally:
                 kmz.delete_temp_file()
         return kmz
+
+    def to_esri_shape_file(
+        self,
+        gdf: gpd.GeoDataFrame,
+        main_address: bool = True,
+        locality: bool = False,
+        branch_office: bool = False,
+        office: bool = False,
+    ) -> io.BytesIO:
+        """
+        小班区画のGeoDataFrameをESRI Shapefile形式に変換し、Zipファイルとして圧縮後、
+        メモリ上のファイルオブジェクトとして返します。Shapefileは、属性名が10バイト以内に
+        制限される為、Zipファイルの中に属性名の対応表としてCSVファイルとして保存します。
+        また、属性値もカラムを日本語にしてCSVファイルとして保存します。
+
+        Args:
+            gdf(gpd.GeoDataFrame):
+                ESRI Shapefile形式に変換する対象のGeoDataFrame。小班区画レベルの
+                GeoDataFrameである必要があります。それ以外のGeoDataFrameを渡すとエラーになります。
+            main_address(bool, optional):
+                林班主番でディゾルブして保存するかどうかを指定します。デフォルトは ``True`` です。
+            locality(bool, optional):
+                国有林の所在地でディゾルブして保存するかどうかを指定します。デフォルトは ``False`` です。
+            branch_office(bool, optional):
+                担当区でディゾルブして保存するかどうかを指定します。デフォルトは ``False`` です。
+            office(bool, optional):
+                森林管理署でディゾルブして保存するかどうかを指定します。デフォルトは ``False`` です。
+         Returns:
+            io.BytesIO:
+                変換されたShapefileを含むZipファイルの内容をバイト列として保持するメモリ上のファイルオブジェクト。
+         Example:
+            ```python
+            from nfj.geospatial import GsicAddressShape
+            shp = GsicAddressShape(prefecture="滋賀県")
+            gdf = shp.geodataframe(plan_area="湖南森林計画区")
+            zip_file = shp.to_esri_shape_file(gdf, main_address=True, locality=True
+            with open("output.zip", "wb") as f:
+                f.write(zip_file.getvalue())
+            ```
+        """
+        self.__check_geodataframe(gdf)
+        gdfs = {"sub_address": gdf}
+
+        # ディゾルブして保存する場合は、ディゾルブされたGeoDataFrameもgdfsに追加する
+        if main_address:
+            gdfs["main_address"] = self.dissolve_by_main_address(gdf)
+        if locality:
+            gdfs["locality"] = self.dissolve_by_locality(gdf)
+        if branch_office:
+            gdfs["branch_office"] = self.dissolve_by_branch_office(gdf)
+        if office:
+            gdfs["office"] = self.dissolve_by_office(gdf)
+
+        # 対応表の作成
+        rename = {}
+        correction_list = []
+        addrs_cols = AddressFields()
+        for col in gdf.columns:
+            field_info = addrs_cols.field_info(col)
+            if field_info is not None:
+                correction_list.append(
+                    {
+                        # Shapefileの属性名は10バイト以内かつ重複しない名称に調整する
+                        "shapefile": col[:10],
+                        "field": field_info.en,
+                        "alias": field_info.ja,
+                        "description": field_info.description,
+                    }
+                )
+                rename[col] = field_info.ja
+        correction_table = pd.DataFrame(correction_list)
+
+        # 属性値のテーブルを作成
+        value_table = gdf.rename(columns=rename).drop(columns="geometry")
+
+        def _to_csv_bytes(df: pd.DataFrame, encoding: str = "shift_jis") -> bytes:
+            """Encode CSV content explicitly to avoid implicit UTF-8 conversion in ZipFile."""
+            with io.StringIO() as csv_buffer:
+                df.to_csv(csv_buffer, index=False)
+                return csv_buffer.getvalue().encode(encoding)
+
+        # Zipファイルに圧縮して返す
+        memory_file = io.BytesIO()
+        with zipfile.ZipFile(
+            memory_file, mode="w", compression=zipfile.ZIP_DEFLATED
+        ) as zf:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                tmp_path = Path(tmp_dir)
+                for layer_name, layer_gdf in gdfs.items():
+                    # Shapefileを一時ディレクトリに出力し、関連ファイル一式をZipに追加
+                    shp_path = tmp_path / f"{layer_name}.shp"
+                    layer_gdf.to_file(
+                        shp_path,
+                        driver="ESRI Shapefile",
+                        encoding="utf-8",
+                    )
+                    for sidecar_path in sorted(tmp_path.glob(f"{layer_name}.*")):
+                        zf.write(sidecar_path, arcname=sidecar_path.name)
+
+            # 対応表をCSVファイルとしてZipファイルに追加
+            zf.writestr("カラム名の対応表.csv", _to_csv_bytes(correction_table))
+
+            # 属性値のテーブルをCSVファイルとしてZipファイルに追加
+            zf.writestr("属性値のテーブル.csv", _to_csv_bytes(value_table))
+
+        memory_file.seek(0)
+        return memory_file

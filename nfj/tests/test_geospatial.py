@@ -4,6 +4,7 @@ import tempfile
 import zipfile
 
 import geopandas as gpd
+import pandas as pd
 import pytest
 import shapely
 
@@ -469,3 +470,40 @@ def test_to_geopackage_validates_before_writing_when_dissolve_requested(monkeypa
         assert calls["to_geopackage"] == 0
     finally:
         gpkg.delete_temp_file()
+
+
+def test_to_esri_shape_file_returns_zip_with_sidecar_files_and_csv_tables():
+    shape_file = _make_shape_file()
+    cols = shape_file.fields.use_default_en_fields()
+    gdf = gpd.GeoDataFrame(
+        {
+            column: [shapely.Point(0, 0)] if column == "geometry" else ["-"]
+            for column in cols
+        },
+        geometry="geometry",
+        crs="EPSG:4326",
+    )
+
+    memory_file = shape_file.to_esri_shape_file(
+        gdf,
+        main_address=False,
+        locality=False,
+        branch_office=False,
+        office=False,
+    )
+
+    assert isinstance(memory_file, io.BytesIO)
+    with zipfile.ZipFile(memory_file) as zf:
+        names = set(zf.namelist())
+        assert "sub_address.shp" in names
+        assert "sub_address.shx" in names
+        assert "sub_address.dbf" in names
+        assert "カラム名の対応表.csv" in names
+        assert "属性値のテーブル.csv" in names
+
+        correction_csv = zf.read("カラム名の対応表.csv")
+        with pytest.raises(UnicodeDecodeError):
+            correction_csv.decode("utf-8")
+        correction_table = pd.read_csv(io.BytesIO(correction_csv), encoding="shift_jis")
+
+    assert correction_table["shapefile"].map(len).max() <= 10

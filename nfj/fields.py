@@ -31,6 +31,7 @@ class FieldInfo(pydantic.BaseModel):
     en: str
     dtype: Any
     default: Any
+    description: Optional[str] = pydantic.Field(default="-")
     agg: Optional[str] = pydantic.Field(default=None)
 
     @pydantic.field_validator("org", "ja", "en", mode="before")
