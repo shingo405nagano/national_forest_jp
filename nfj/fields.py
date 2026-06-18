@@ -2,7 +2,14 @@ from typing import Any, Optional
 
 import pydantic
 
-from .config import ADDRESS_FIELDS, FOREST_ROAD_FIELDS  # noqa: F401
+from .config import (
+    ADDRESS_FIELDS,
+    BRANCH_OFFICE_FIELDS,
+    LOCALITY_FIELDS,
+    MAIN_ADDRESS_FIELDS,
+    OFFICE_FIELDS,
+    PROTECTED_FOREST_FIELDS,
+)
 from .logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -132,9 +139,64 @@ class _AddrsColumns(object):
     """小班区画の処理にてよく使用する英名の属性名を定義するクラス。"""
 
     def __init__(self):
+        self.protection_forests = []
         for _, data in ADDRESS_FIELDS.items():
             setattr(self, data["en"], data["en"])
+            if "protection_forest" in data["en"]:
+                self.protection_forests.append(data["en"])
 
     def __getattr__(self, name: str) -> str:
         # Pylance向け: ADDRESS_FIELDS由来の動的属性は文字列として扱う
         return name
+
+
+class BaseDissolveFields(object):
+    def __init__(self, field_item: dict[str, dict[str, str]]):
+        self.field_item = field_item
+
+    def fields(self) -> list[str]:
+        """ディゾルブに使用する属性名のリストを返します。"""
+        fields = []
+        for key, item in self.field_item.items():
+            fields.append(item["en"])
+        return fields
+
+    def field_and_alias(self) -> dict[str, str]:
+        """英語の属性名をキー、日本語の属性名を値とする辞書を返します。"""
+        field_and_alias = {}
+        for key, item in self.field_item.items():
+            field_and_alias[item["en"]] = item["ja"]
+        return field_and_alias
+
+    def dissolve_fields(self) -> list[str]:
+        """ディゾルブに使用する属性名のリストを返します。"""
+        dissolve_fields = []
+        for field in self.fields():
+            if field != "geometry":
+                dissolve_fields.append(field)
+        return dissolve_fields
+
+
+class OfficeFields(BaseDissolveFields):
+    def __init__(self):
+        super().__init__(field_item=OFFICE_FIELDS)
+
+
+class BranchOfficeFields(BaseDissolveFields):
+    def __init__(self):
+        super().__init__(field_item=BRANCH_OFFICE_FIELDS)
+
+
+class LocalityFields(BaseDissolveFields):
+    def __init__(self):
+        super().__init__(field_item=LOCALITY_FIELDS)
+
+
+class MainAddressFields(BaseDissolveFields):
+    def __init__(self):
+        super().__init__(field_item=MAIN_ADDRESS_FIELDS)
+
+
+class ProtectedForestFields(BaseDissolveFields):
+    def __init__(self):
+        super().__init__(field_item=PROTECTED_FOREST_FIELDS)

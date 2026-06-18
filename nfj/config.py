@@ -19,10 +19,22 @@ conf_dir = os.path.join(os.path.dirname(__file__), ".confs")
 _fields_yaml = os.path.join(conf_dir, "fields.yaml")
 global ADDRESS_FIELDS
 global FOREST_ROAD_FIELDS
+global OFFICE_FIELDS
+global BRANCH_OFFICE_FIELDS
+global LOCALITY_FIELDS
+global MAIN_ADDRESS_FIELDS
+global PROTECTED_FOREST_FIELDS
 with open(_fields_yaml, "r", encoding="utf-8") as f:
     fields = yaml.safe_load(f)
     ADDRESS_FIELDS = fields["address"]
     FOREST_ROAD_FIELDS = fields["forest_road"]
+    dissolve_fields = fields["dissolved"]
+    OFFICE_FIELDS = dissolve_fields["office"]
+    BRANCH_OFFICE_FIELDS = dissolve_fields["branch_office"]
+    LOCALITY_FIELDS = dissolve_fields["locality"]
+    MAIN_ADDRESS_FIELDS = dissolve_fields["main_address"]
+    PROTECTED_FOREST_FIELDS = dissolve_fields["protected_forest"]
+
 
 global URLS
 with open(os.path.join(conf_dir, "urls.yaml"), "r", encoding="utf-8") as f:

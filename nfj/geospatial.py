@@ -1,11 +1,14 @@
 import datetime
+import io
+import json
 import re
-from typing import Any
+from typing import Any, Optional
 
+import fastkml
 import geopandas as gpd
 import shapely
 
-from .config import (  # noqa: F401
+from .config import (
     AuthorityCoding,
     BranchOfficeCoding,
     CityCoding,
@@ -19,8 +22,28 @@ from .config import (  # noqa: F401
     ProtectedForestCoding,
     TreeNameCoding,
 )
+from .enums import OutputGeoJsonType
 from .fetch import GsShapeFile
-from .fields import FieldInfo, _AddrsColumns
+from .fields import (
+    BranchOfficeFields,
+    FieldInfo,
+    LocalityFields,
+    MainAddressFields,
+    OfficeFields,
+    ProtectedForestFields,
+    _AddrsColumns,
+)
+from .geopackage import GeoPackage
+from .keyhole import (
+    BranchOfficeKmlKwargs,
+    KeyholeMarkupLanguage,
+    KmlKwargs,
+    Kmz,
+    LocalityKmlKwargs,
+    MainAddressKmlKwargs,
+    OfficeKmlKwargs,
+    SubAddressKmlKwargs,
+)
 from .utils import txt_normalizer
 
 
@@ -430,3 +453,436 @@ class GsicAddressShape(GsShapeFile):
         return {
             field_info.en: field_info.ja for field_info in self.fields.fields.values()
         }
+
+    def dissolve_by_office(self, gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+        """GeoDataFrame を森林管理署ごとにディゾルブします。
+        Args:
+            gdf(gpd.GeoDataFrame):
+                このクラスで生成された GeoDataFrame を想定しています。それ以外の GeoDataFrame
+                を渡した場合、エラーが発生します。
+        Returns:
+            森林管理署ごとにディゾルブされた GeoDataFrame。
+        """
+        office_fields = OfficeFields()
+        self.__check_geodataframe(gdf)
+        dissolved = gdf.dissolve(by=office_fields.dissolve_fields(), as_index=False)
+        return dissolved[office_fields.fields()]
+
+    def dissolve_by_branch_office(self, gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+        """GeoDataFrame を担当区ごとにディゾルブします。
+        Args:
+            gdf(gpd.GeoDataFrame):
+                このクラスで生成された GeoDataFrame を想定しています。それ以外の GeoDataFrame
+                を渡した場合、エラーが発生します。
+        Returns:
+            担当区ごとにディゾルブされた GeoDataFrame。
+        """
+        branch_office_fields = BranchOfficeFields()
+        self.__check_geodataframe(gdf)
+        dissolved = gdf.dissolve(
+            by=branch_office_fields.dissolve_fields(), as_index=False
+        )
+        return dissolved[branch_office_fields.fields()]
+
+    def dissolve_by_locality(self, gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+        """GeoDataFrame を国有林の所在地ごとにディゾルブします。
+        Args:
+            gdf(gpd.GeoDataFrame):
+                このクラスで生成された GeoDataFrame を想定しています。それ以外の GeoDataFrame
+                を渡した場合、エラーが発生します。
+        Returns:
+            国有林の所在地ごとにディゾルブされた GeoDataFrame。
+        """
+        locality_fields = LocalityFields()
+        self.__check_geodataframe(gdf)
+        dissolved = gdf.dissolve(by=locality_fields.dissolve_fields(), as_index=False)
+        return dissolved[locality_fields.fields()]
+
+    def dissolve_by_main_address(self, gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+        """GeoDataFrame を林班ごとにディゾルブします。
+        Args:
+            gdf(gpd.GeoDataFrame):
+                このクラスで生成された GeoDataFrame を想定しています。それ以外の GeoDataFrame
+                を渡した場合、エラーが発生します。
+        Returns:
+            林班ごとにディゾルブされた GeoDataFrame。
+        """
+        main_address_fields = MainAddressFields()
+        self.__check_geodataframe(gdf)
+        dissolved = gdf.dissolve(
+            by=main_address_fields.dissolve_fields(), as_index=False
+        )
+        return dissolved[main_address_fields.fields()]
+
+    def dissolve_by_protection_forests(
+        self, gdf: gpd.GeoDataFrame
+    ) -> dict[str, gpd.GeoDataFrame]:
+        """GeoDataFrame を保護林の区分ごとにディゾルブします。
+        Args:
+            gdf(gpd.GeoDataFrame):
+                このクラスで生成された GeoDataFrame を想定しています。それ以外の GeoDataFrame
+                を渡した場合、エラーが発生します。
+        Returns:
+            dict[str, gpd.GeoDataFrame]:
+                保安林の区分ごとにディゾルブされた GeoDataFrame の辞書。
+        """
+
+        def get_unique_protection_forests(gdf: gpd.GeoDataFrame) -> list[str]:
+            """GeoDataFrameからユニークな保安林の種類を取得します。"""
+            addrs = _AddrsColumns()
+            ary = gdf[addrs.protection_forests].to_numpy().flatten()
+            unique_values = [v for v in set(ary.tolist()) if v != "-"]
+            return unique_values
+
+        def get_protection_forest_rows(
+            gdf: gpd.GeoDataFrame, protection_forest: str
+        ) -> gpd.GeoDataFrame:
+            """GeoDataFrameから指定された保安林の種類に該当する行を取得します。"""
+            addrs = _AddrsColumns()
+            pf_rows = gdf[
+                (gdf[addrs.protection_forest_1] == protection_forest)
+                | (gdf[addrs.protection_forest_2] == protection_forest)
+                | (gdf[addrs.protection_forest_3] == protection_forest)
+                | (gdf[addrs.protection_forest_4] == protection_forest)
+            ]
+            return pf_rows
+
+        pf_fields = ProtectedForestFields()
+        self.__check_geodataframe(gdf)
+        data = {}
+        for pf in get_unique_protection_forests(gdf):
+            pf_rows = get_protection_forest_rows(gdf, pf)
+            pf_rows["protected_forest_type"] = pf
+            dissolved = pf_rows.dissolve(by=pf_fields.dissolve_fields(), as_index=False)
+            data[pf] = dissolved[pf_fields.fields()]
+
+        return data
+
+    def to_geojson(
+        self,
+        gdf: gpd.GeoDataFrame,
+        alias: bool = False,
+        output_dtype: OutputGeoJsonType | str | int = OutputGeoJsonType.STRING,
+        **kwargs: Any,
+    ) -> str | bytes | dict[str, Any]:
+        """
+        GeoDataFrameをGeoJSON形式の文字列に変換します。
+        フィールド名のエイリアスを適用したい場合は、``alias`` を ``True`` に設定し、
+        クラスの初期化時に渡した ``field_and_alias`` を使用してカラム名を変更します。
+        出力形式を指定する場合は、``output_dtype`` に適切な値を設定してください。ディゾルブ
+        後のGeoDataFrameでも同様に処理されます。
+
+        GeoJSONは通常、EPSG:4326（WGS 84）を使用するため、CRSが異なる場合は変換します。
+
+        Args:
+            gdf(gpd.GeoDataFrame):
+                GeoJSON形式に変換する対象のGeoDataFrame。
+            alias(bool, optional):
+                フィールド名のエイリアスを適用するかどうか。デフォルトは ``False`` です。
+            output_dtype(OutputGeoJsonType, optional):
+                出力形式を指定します。デフォルトは ``OutputGeoJsonType.STRING`` です。
+                 - 0 | OutputGeoJsonType.STRING | 'string': 文字列で出力します。
+                 - 1 | OutputGeoJsonType.BYTES | 'bytes': バイト列で出力します。
+                 - 2 | OutputGeoJsonType.DICT | 'dict': 辞書形式で出力します。
+                 - 3 | OutputGeoJsonType.PATH | 'path': ファイルパスに出力します。
+            path(str, optional):
+                GeoJSONファイルの出力先パス。``OutputGeoJsonType.PATH`` を指定した場合
+                に使用されます。
+
+        Returns:
+            GeoJSON形式の文字列、バイト列、辞書、またはファイルパス。
+
+        Example:
+            ```python
+            shp = GsicAddressShape(prefecture="滋賀県")
+            gdf = shp.geodataframe(plan_area="湖南森林計画区")
+            geojson_string = shp.to_geojson(gdf, alias=True, output_dtype="string")
+            with open("output.geojson", "w", encoding="utf-8") as f:
+                f.write(geojson_string)
+            ```
+        """
+        if gdf.crs is None:
+            raise ValueError("GeoDataFrameのCRSが設定されていません。")
+        elif gdf.crs.to_epsg() != 4326:
+            gdf = gdf.to_crs(epsg=4326)
+
+        if alias:
+            gdf = gdf.rename(columns=self.field_and_alias())
+
+        if isinstance(output_dtype, int):
+            output_dtype = OutputGeoJsonType(output_dtype)
+        elif isinstance(output_dtype, str):
+            output_dtype = OutputGeoJsonType[output_dtype.upper()]
+
+        if output_dtype == OutputGeoJsonType.STRING:
+            return json.dumps(gdf.to_geo_dict(), ensure_ascii=False)
+        elif output_dtype == OutputGeoJsonType.BYTES:
+            with io.BytesIO() as buffer:
+                gdf.to_file(buffer, driver="GeoJSON")
+                return buffer.getvalue()
+        elif output_dtype == OutputGeoJsonType.DICT:
+            return gdf.to_geo_dict()
+        elif output_dtype == OutputGeoJsonType.PATH and "path" in kwargs:
+            path = kwargs["path"]
+            if not isinstance(path, str):
+                raise ValueError("pathは文字列で指定してください。")
+            gdf.to_file(path, driver="GeoJSON")
+            return path
+        else:
+            raise ValueError(f"Unsupported output_dtype: {output_dtype}")
+
+    def to_geopackage(
+        self,
+        gdf: gpd.GeoDataFrame,
+        layer: str,
+        alias: bool = False,
+        gpkg: Optional[GeoPackage] = None,
+        **kwargs: Any,
+    ) -> GeoPackage:
+        """
+        GeoDataFrameをGeoPackage形式に変換します。
+        フィールド名のエイリアスを適用したい場合は、``alias`` を ``True`` に設定し、クラス
+        の初期化時に渡した ``field_and_alias`` を使用してカラム名を変更します。
+        出力形式を指定する場合は、``output_dtype`` に適切な値を設定してください。
+
+        Args:
+            gdf(gpd.GeoDataFrame):
+                GeoPackage形式に変換する対象のGeoDataFrame。
+            layer(str):
+                GeoPackage内のレイヤー名を指定します。
+            alias(bool, optional):
+                フィールド名のエイリアスを適用するかどうか。デフォルトは ``False`` です。
+                ``True``の場合は、Layerとして保存した後に、指定されたエイリアスを追加し、
+                FieldとAliasの対応関係を保持します。
+            gpkg(GeoPackage, optional):
+                GeoPackageオブジェクトを指定します。指定された場合、出力形式に関わらずこのオブジェクトに書き込まれます。
+                指定されない場合は、出力形式に応じて内部でGeoPackageオブジェクトが作成されます。
+        ## Kwargs:
+            - office(bool): 森林管理署の名称でディゾルブするかどうかを指定します。デフォルトは ``False`` です。
+            - branch_office(bool): 担当区の名称でディゾルブするかどうかを指定します。デフォルトは ``False`` です。
+            - locality(bool): 国有林の所在地でディゾルブするかどうかを指定します。デフォルトは ``False`` です。
+            - main_address(bool): 林班主番でディゾルブするかどうかを指定します。デフォルトは ``False`` です。
+            - protection_forests(bool): 保安林の区分でディゾルブするかどうかを指定します。デフォルトは ``False`` です。
+             ディゾルブする場合は、指定されたカラムでディゾルブされたGeoDataFrameがGeoPackageに書き込まれます。
+             このオプションを指定する場合は、引数の`gdf`が小班区画レベルのGeoDataFrameである必要があります。
+
+        Returns:
+            GeoPackageオブジェクト。
+        """
+        # CRSの確認
+        if gdf.crs is None:
+            raise ValueError("GeoDataFrameのCRSが設定されていません。")
+        if gpkg is not None and not isinstance(gpkg, GeoPackage):
+            raise ValueError("gpkgはGeoPackageオブジェクトで指定してください。")
+
+        dissolve_requested = any(
+            kwargs.get(key, False)
+            for key in (
+                "office",
+                "branch_office",
+                "locality",
+                "main_address",
+                "protection_forests",
+            )
+        )
+
+        # `gdf`が小班区画レベルのGeoDataFrameかを確認
+        sub_address_level = set(gdf.columns) == set(self.fields.use_default_en_fields())
+        if dissolve_requested and not sub_address_level:
+            raise ValueError(
+                "ディゾルブする場合は、引数の`gdf`が小班区画レベルのGeoDataFrameである必要があります。"
+            )
+
+        # `gpkg`が指定されている場合はそれを使用し、そうでない場合は出力形式に応じて内部で
+        # GeoPackageオブジェクトを作成する
+        if gpkg is not None:
+            gpkg.to_geopackage(gdf, layer=layer, alias=alias)
+        else:
+            # GeoPackageオブジェクトに書き込む
+            gpkg = GeoPackage(self.field_and_alias())
+            gpkg.to_geopackage(gdf, layer=layer, alias=alias)
+        # ディゾルブのオプションに応じて、指定されたカラムでディゾルブされたGeoDataFrameをGeoPackageに書き込む
+        if kwargs.get("office", False):
+            dissolved = self.dissolve_by_office(gdf)
+            self.to_geopackage(dissolved, layer="office", alias=alias, gpkg=gpkg)
+        if kwargs.get("branch_office", False):
+            dissolved = self.dissolve_by_branch_office(gdf)
+            self.to_geopackage(dissolved, layer="branch_office", alias=alias, gpkg=gpkg)
+        if kwargs.get("locality", False):
+            dissolved = self.dissolve_by_locality(gdf)
+            self.to_geopackage(dissolved, layer="locality", alias=alias, gpkg=gpkg)
+        if kwargs.get("main_address", False):
+            dissolved = self.dissolve_by_main_address(gdf)
+            self.to_geopackage(dissolved, layer="main_address", alias=alias, gpkg=gpkg)
+        if kwargs.get("protection_forests", False):
+            dissolved_dict = self.dissolve_by_protection_forests(gdf)
+            for pf, dissolved in dissolved_dict.items():
+                layer_name = f"protection_forest_{pf}"
+                self.to_geopackage(dissolved, layer=layer_name, alias=alias, gpkg=gpkg)
+
+        return gpkg
+
+    def to_kml_doc(self, kwargs: KmlKwargs) -> fastkml.Document:
+        """KmlKwargsの設定に基づいて、GeoDataFrameをKMLのDocument要素に変換します。
+
+        `label=True` の場合は、ポリゴンフォルダとラベルフォルダを親フォルダにまとめて返します。
+        `label=False` の場合は、ポリゴンフォルダのみを返します。
+
+        Args:
+            kwargs (KmlKwargs):
+                KML作成の設定を保持するオブジェクト。
+
+        Returns:
+            fastkml.Document: 変換されたDocument要素。
+
+        Example:
+            ```python
+            from nfj.geospatial imort GsicAddressShape
+            from nfj.keyhole imoprt SubAddressKmlKwargs
+
+            shp = GsicAddressShape(prefecture="滋賀県")
+            gdf = shp.geodataframe(plan_area="湖南森林計画区")
+            kml_kwargs = SubAddressKmlKwargs(gdf=gdf)
+            kml_doc = shp.to_kml_doc(kml_kwargs)
+            with open("output.kml", "w", encoding="utf-8") as f:
+                f.write(kml_doc.to_string(prettyprint=True))
+            ```
+        """
+        if not isinstance(kwargs, KmlKwargs):
+            raise ValueError("kwargsはKmlKwargsのインスタンスで指定してください。")
+
+        # `kwargs.gdf`がこのクラスで生成されたGeoDataFrameかを確認するために、列名とgeometry列の型をチェックします。
+        default_fields = self.fields.use_default_en_fields() + ["geometry"]
+        for col in kwargs.gdf.columns:
+            if col not in default_fields:
+                raise ValueError(
+                    f"kwargs.gdfの列名がこのクラスで生成されたGeoDataFrameの列名と一致しません。列名: {col}"
+                )
+
+        keyhole = KeyholeMarkupLanguage()
+
+        line_style = keyhole.create_line_style(
+            hex_color=kwargs.line_color,
+            alpha=kwargs.line_alpha,
+            width=kwargs.line_width,
+        )
+        poly_style = keyhole.create_poly_style(
+            hex_color=kwargs.poly_fill_color,
+            alpha=kwargs.poly_fill_alpha,
+            fill=kwargs.poly_fill,
+            outline=kwargs.poly_outline,
+        )
+        poly_folder = keyhole.geodataframe_to_poly_folder(
+            gdf=kwargs.gdf,
+            geometry_column=kwargs.geometry_column,
+            alias=kwargs.alias,
+            line_style=line_style,
+            poly_style=poly_style,
+            folder_name=kwargs.folder_name,
+            geometry_altitude_mode=kwargs.altitude_mode,
+            geometry_extrude=kwargs.extrude,
+            name_column=kwargs.name_column,
+        )
+
+        if not kwargs.label:
+            doc = fastkml.Document(name=kwargs.folder_name)
+            doc.append(poly_folder)
+            return doc
+
+        label_style = keyhole.create_label_style(
+            hex_color=kwargs.label_color,
+            alpha=kwargs.label_alpha,
+            scale=kwargs.label_scale,
+        )
+        label_folder = keyhole.geodataframe_to_label_folder(
+            gdf=kwargs.gdf,
+            geometry_column=kwargs.geometry_column,
+            label_style=label_style,
+            folder_name=f"{kwargs.folder_name}ラベル",
+            name_column=kwargs.name_column,
+        )
+
+        doc = fastkml.Document(name=kwargs.folder_name)
+        doc.append(poly_folder)
+        doc.append(label_folder)
+        return doc
+
+    def to_kmz(
+        self,
+        sub_addrs_gdf: gpd.GeoDataFrame,
+        folder_name: str = "国有林区画データ",
+        main_address: bool = True,
+        locality: bool = True,
+        branch_office: bool = False,
+        office: bool = False,
+        return_memory_file: bool = False,
+    ) -> Kmz | io.BytesIO:
+        """
+        GeoDataFrameをKMZ形式に変換します。KMZはKMLファイルをZIP圧縮したもので、Google
+        Earthなどで使用されます。
+        Args:
+            sub_addrs_gdf(gpd.GeoDataFrame):
+                KMZ形式に変換する対象のGeoDataFrame。小班区画レベルのGeoDataFrameである
+                必要があります。それ以外のGeoDataFrameを渡した場合、意図しない結果になる可
+                能性があります。
+            folder_name(str, optional):
+                KMZ内のフォルダ名を指定します。デフォルトは "国有林区画データ" です。
+            main_address(bool, optional):
+                林班主番でディゾルブするかどうかを指定します。デフォルトは ``True`` です。
+            locality(bool, optional):
+                国有林名でディゾルブするかどうかを指定します。デフォルトは ``True`` です。
+            branch_office(bool, optional):
+                担当区でディゾルブするかどうかを指定します。デフォルトは ``False`` です。
+            office(bool, optional):
+                森林管理署でディゾルブするかどうかを指定します。デフォルトは ``False`` です。
+            return_memory_file(bool, optional):
+                KMZファイルをメモリ上のファイルオブジェクトとして返すかどうかを指定します。
+                デフォルトは ``False`` で、KMZオブジェクトが返されます。``True`` に設定した場合、
+                `io.BytesIO` オブジェクトが返されます。
+        Returns:
+            Kmz | io.BytesIO:
+                変換されたKMZオブジェクト。``return_memory_file=True`` の場合は
+                ``io.BytesIO`` オブジェクト。
+        Example:
+            ```python
+            from nfj.geospatial import GsicAddressShape
+
+            shp = GsicAddressShape(prefecture="滋賀県")
+            gdf = shp.geodataframe(plan_area="湖南森林計画区")
+            kmz = shp.to_kmz(gdf, folder_name="湖南森林計画区データ", main_address=True, locality=True)
+            kmz.save("output.kmz")
+            ```
+        """
+        self.__check_geodataframe(sub_addrs_gdf)
+
+        sub_addrs_kwargs = SubAddressKmlKwargs(gdf=sub_addrs_gdf)
+        docs = [self.to_kml_doc(sub_addrs_kwargs)]
+        if main_address:
+            main_address_gdf = self.dissolve_by_main_address(sub_addrs_gdf)
+            main_address_kwargs = MainAddressKmlKwargs(gdf=main_address_gdf)
+            docs.append(self.to_kml_doc(main_address_kwargs))
+        if locality:
+            locality_gdf = self.dissolve_by_locality(sub_addrs_gdf)
+            locality_kwargs = LocalityKmlKwargs(gdf=locality_gdf)
+            docs.append(self.to_kml_doc(locality_kwargs))
+        if branch_office:
+            branch_office_gdf = self.dissolve_by_branch_office(sub_addrs_gdf)
+            branch_office_kwargs = BranchOfficeKmlKwargs(gdf=branch_office_gdf)
+            docs.append(self.to_kml_doc(branch_office_kwargs))
+        if office:
+            office_gdf = self.dissolve_by_office(sub_addrs_gdf)
+            office_kwargs = OfficeKmlKwargs(gdf=office_gdf)
+            docs.append(self.to_kml_doc(office_kwargs))
+
+        kmz = Kmz(name=folder_name, document_list=docs)
+        if return_memory_file:
+            # KMZオブジェクトをメモリ上のファイルオブジェクトとして返す
+            memory_file = io.BytesIO()
+            try:
+                with open(kmz.kmz_path, "rb") as f:
+                    memory_file.write(f.read())
+                memory_file.seek(0)
+                return memory_file
+            finally:
+                kmz.delete_temp_file()
+        return kmz
