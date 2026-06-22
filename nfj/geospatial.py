@@ -902,7 +902,7 @@ class GsicAddressShape(GsShapeFile):
                 kmz.delete_temp_file()
         return kmz
 
-    def to_esri_shape_file(
+    def to_ziped_esri_shape_file(
         self,
         gdf: gpd.GeoDataFrame,
         main_address: bool = True,
