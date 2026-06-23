@@ -79,6 +79,21 @@ def test_subaddrs_protection_marks_maps_known_code_and_missing_values():
     assert marks[0] == ["水"]
 
 
+def test_subaddrs_add_geometries_splits_label_into_kana_and_number_parts():
+    gdf = _build_subaddr_gdf()
+    gdf.at[0, "sub_address_name"] = "A-1"
+    sub = SubAddrsDxf(gdf=gdf, label_size=15)
+
+    doc = ezdxf.new(dxfversion="R2010", units=InsertUnits.Meters)
+    msp = doc.modelspace()
+    sub.add_geometries(msp)
+
+    text_entities = [entity for entity in msp if entity.dxftype() == "TEXT"]
+
+    assert [entity.dxf.text for entity in text_entities] == ["A", "1"]
+    assert [entity.dxf.height for entity in text_entities] == [15.0, 9.0]
+
+
 def test_subaddrs_add_geometries_adds_label_and_protection_mark_entities():
     gdf = _build_subaddr_gdf(protection_values=["水涵保", "土流保", "-", "-"])
     sub = SubAddrsDxf(gdf=gdf, label_size=15)
@@ -90,6 +105,6 @@ def test_subaddrs_add_geometries_adds_label_and_protection_mark_entities():
     entity_types = [entity.dxftype() for entity in msp]
 
     assert entity_types.count("LWPOLYLINE") == 1
-    # 小班名ラベル1つ + 保安林短縮コード2つ
-    assert entity_types.count("TEXT") == 3
+    # 小班名ラベル(kana + number)2つ + 保安林短縮コード2つ
+    assert entity_types.count("TEXT") == 4
     assert entity_types.count("CIRCLE") == 2

@@ -10,6 +10,26 @@ from .config import ProtectedForestCoding
 from .fields import AddressFields
 
 
+def split_sub_address_name(sub_address_name: str) -> dict[str, Optional[str]]:
+    """
+    小班名の文字列を分解し、ひらがな＆カタカナの部分と数字の部分に分ける関数
+    Args:
+        sub_address_name (str):
+            小班名の文字列
+    Returns:
+        dict[str, Optional[str]]:
+            ひらがな＆カタカナの部分と数字の部分を格納した辞書を返す
+    ## Samples:
+        - "わ" -> {"kana": "わ", "number": None}
+        - "わ1" -> {"kana": "わ", "number": "1"}
+    """
+    # ひらがな＆カタカナの部分を抽出
+    kana_part = "".join([c for c in sub_address_name if c.isalpha()])
+    # 数字の部分を抽出
+    number_part = "".join([c for c in sub_address_name if c.isdigit()])
+    return {"kana": kana_part, "number": number_part if number_part else None}
+
+
 class BaseDxf(pydantic.BaseModel):
     """DXFファイルに変換する際のオプションを定義するクラスです。
 
@@ -33,7 +53,7 @@ class BaseDxf(pydantic.BaseModel):
     geometry_column: str = "geometry"
     geometry_layer: str = "小班区画レイヤー"
     label_column: Optional[str] = "sub_address_name"
-    label_size: int = 15
+    label_size: int = 25
     label_layer: str = "小班区画ラベルレイヤー"
     model_config = pydantic.ConfigDict(
         validate_default=True,
@@ -193,6 +213,57 @@ class SubAddrsDxf(BaseDxf):
         return {
             "layer": self.protection_mark_circle_layer,
         }
+
+    def _add_label_text(
+        self,
+        modelspace: Modelspace,
+        geom: shapely.geometry.Polygon,
+        label: Optional[str] = None,
+    ) -> None:
+        if label is None:
+            return
+
+        parts = split_sub_address_name(label)
+        centroid = shapely.point_on_surface(geom)
+
+        if parts["kana"]:
+            modelspace.add_text(
+                parts["kana"],
+                dxfattribs=self.label_dxf_attributes(),
+            ).set_placement((centroid.x, centroid.y))
+
+        if parts["number"] is not None:
+            number_attributes = self.label_dxf_attributes()
+            number_attributes["height"] = self.label_size * 0.6
+            number_offset_x = self.label_size * 1.4
+            modelspace.add_text(
+                parts["number"],
+                dxfattribs=number_attributes,
+            ).set_placement((centroid.x + number_offset_x, centroid.y))
+
+    def _add_geometry(
+        self,
+        modelspace: Modelspace,
+        geom: shapely.geometry.Polygon,
+        label: Optional[str] = None,
+    ) -> None:
+        exterior_coords = list(geom.exterior.coords)
+        modelspace.add_lwpolyline(
+            exterior_coords,
+            close=True,
+            dxfattribs=self.geometry_dxf_attributes(),
+        )
+        if label is not None:
+            self._add_label_text(modelspace, geom, label)
+
+        if geom.interiors:
+            for interior in geom.interiors:
+                interior_coords = list(interior.coords)
+                modelspace.add_lwpolyline(
+                    interior_coords,
+                    close=True,
+                    dxfattribs=self.geometry_dxf_attributes(),
+                )
 
     def _add_protection_marks(
         self,
