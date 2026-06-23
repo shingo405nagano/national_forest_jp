@@ -30,11 +30,29 @@
 
 ## セットアップ
 
-依存関係は `requirements.txt` に、パッケージ情報は `pyproject.toml` に定義しています。
+依存関係は `pyproject.toml` で管理し、`requirements.txt` はローカル開発用のインストール入口として使います。
+
+### pip を使う場合
 
 ```bash
 pip install -r requirements.txt
-pip install -e .[dev]
+```
+
+### UV を使う場合
+
+ローカルのクローンから開発用に入れる場合:
+
+```bash
+git clone https://github.com/shingo405nagano/national_forest_jp.git
+cd national_forest_jp
+uv venv .venv
+uv pip install -r requirements.txt
+```
+
+GitHub から直接入れる場合:
+
+```bash
+uv pip install "git+https://github.com/shingo405nagano/national_forest_jp.git"
 ```
 
 Python は 3.13 系で動作確認しています。
