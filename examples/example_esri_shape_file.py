@@ -37,7 +37,9 @@ if __name__ == "__main__":
         # to_esri_shape_fileメソッドを使って、GeoDataFrameをESRI Shapefile形式のZip
         # ファイルのバイナリデータとして取得します。main_address=True, locality=Trueと
         # する事で、それぞれのShapefileを構成します。
-        memory_file = shp.to_esri_shape_file(gdf, main_address=True, locality=True)
+        memory_file = shp.to_ziped_esri_shape_file(
+            gdf, main_address=True, locality=True
+        )
         # 取得したバイナリデータをZipファイルとして保存します。
         output_path.write_bytes(memory_file.getvalue())
 

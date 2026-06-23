@@ -1,20 +1,32 @@
 # national_forest_jp
 
-このプロジェクトは、G空間センターにて公開されている、農林水産省林野庁の国有林小班区画データをダウンロードし、森林計画区ごとに扱いやすい GeoDataFrame に変換するための Python ライブラリです。ライブラリでは、次のような機能を提供しています。
+![](./others/nfj_img.png)
+
+このプロジェクトは、G空間センターにて公開されている、農林水産省林野庁の国有林小班区画データをダウンロードし、森林計画区ごとに扱いやすい GeoDataFrame に変換するための Python ライブラリです。ライブラリでは、次のような機能を提供しています。詳しい使用方法は'./examples'ディレクトリにサンプルコードがあるので、参考にしてください。
 
 - 都道府県単位でデータを取得する
 - 森林計画区ごとのファイルを見つける
-- GeoDataFrame を取得して整形する
+- GeoDataFrame を取得し、後処理を行い利用しやすくする
 - コード値をエンコード / デコードする
 - 属性名と別名の対応を確認する
+- GeoJSON形式で出力する
+- Esri Shapefile形式で出力する
+- GeoPackage形式で出力する
+- KML/KMZ形式で出力する
+- DXF形式で出力する
 
 ## 主な機能
 
 - `nfj.geospatial.GsicAddressShape` で国有林の小班区画データを扱うインスタンスを作成する
-- `geodataframe()` メソッドで森林計画区の GeoDataFrame を取得する
-- `encode()` / `decode()` メソッドでコード値とラベルを相互変換する
-- `summary()` メソッドでデータ全体の概要を YAML / JSON / Python の辞書として取得する
-- `field_and_alias()` メソッドで属性名と日本語別名の対応を確認する
+- `geodataframe` メソッドで森林計画区の GeoDataFrame を取得する
+- `encode` / `decode()` メソッドでコード値とラベルを相互変換する
+- `summary` メソッドでデータ全体の概要を YAML / JSON / Python の辞書として取得する
+- `field_and_alias` メソッドで属性名と日本語別名の対応を確認する
+- `to_geojson`メソッドで、文字列やファイルとして`GeoDataFrame`を GeoJSON 形式で出力する
+- `to_ziped_esri_shape_file`メソッドで、バイナリーデータ化されたZipファイルを作成する
+- `to_geopackage`メソッドで、`GeoPackage`オブジェクトを作成、`GeoPackage`オブジェクトの`save`メソッドでファイルへ出力
+- `to_kmz`メソッドで、`Kmz`オブジェクトを作成、`Kmz`オブジェクトの`save`メソッドでファイルへ出力
+- `to_ziped_dxf`メソッドで、バイナリーデータ化されたZipファイルを作成する
 
 ## セットアップ
 
@@ -74,6 +86,21 @@ for field, alias in shp.field_and_alias().items():
 
 shp.cleanup()
 ```
+
+### GeoJSONでの出力について
+**GeoJSON**は、地理空間データを表現するためのJSONベースのフォーマットです。読み書きは遅いですが、WebGISなどで広くサポートされているため、互換性が高い形式です。`to_ziped_geojson()` メソッドを使うと、GeoDataFrame を GeoJSON 形式のZipファイルとして出力できます。出力されたZipファイルには小班区画の他に、オプションで指定する事で、林班区画や、国有林区画、森林事務所（担当区）区画、森林管理署区画のデータも含めることができます。使用方法は `examples/example_geojson.py` を参照してください。
+
+### Esri Shapefileでの出力について
+**Esri Shapefile**は、Esri社が開発した地理空間データのフォーマットで、広く利用されています。`to_ziped_esri_shape_file()` メソッドを使うと、GeoDataFrame を Esri Shapefile 形式のZipファイルとして出力できます。出力されたZipファイルには小班区画の他に、オプションで指定する事で、林班区画や、国有林区画、森林事務所（担当区）区画、森林管理署区画のデータも含めることができます。また、属性値のテーブルデータもCSV形式で出力されるほか、短縮されたカラム名の対応表も含まれます。使用方法は `examples/example_esri_shape_file.py` を参照してください。
+
+### GeoPackageでの出力について
+**GeoPackage**は、OGC（Open Geospatial Consortium）が策定した地理空間データのフォーマットで、SQLiteデータベースをベースにしています。`to_geopackage()` メソッドを使うと、GeoDataFrame を GeoPackage 形式のオブジェクトとして出力できます。出力されたGeoPackageには小班区画の他に、オプションで指定する事で、林班区画や、国有林区画、森林事務所（担当区）区画、森林管理署区画、保安林区画のデータも含めることができます。GeoPackageの場合、フィールド名とエイリアス名の両方を保持することができるため、GISソフトウェアでの表示では日本語のエイリアス名を利用し、プログラム上ではフィールド名を利用する、といった使い分けが可能です。使用方法は `examples/example_geopackage.py` を参照してください。
+
+### KML/KMZでの出力について
+**KML/KMZ**は、Google Earthなどで利用される地理空間データのフォーマットです。`to_kmz()` メソッドを使うと、GeoDataFrame を KML/KMZ 形式のオブジェクトとして出力できます。出力されたKMZには小班区画の他に、オプションで指定する事で、林班区画や、国有林区画、森林事務所（担当区）区画、森林管理署区画のデータも含めることができます。使用方法は `examples/example_kmz.py` を参照してください。色などの細かな設定をする場合は、`examples/example_kml.py` を参考にしてください。
+
+### DXFでの出力について
+**DXF**は、AutoCADなどで利用される地理空間データのフォーマットです。`to_ziped_dxf()` メソッドを使うと、GeoDataFrame を DXF 形式のZipファイルとして出力できます。出力されたZipファイルには小班区画の他に、オプションで指定する事で、林班区画や、国有林区画、森林事務所（担当区）区画、森林管理署区画、保安林区画のデータも含めることができます。また、属性値のテーブルデータもCSV形式で出力されるほか、短縮された保安林のコード値の対応表も含まれます。使用方法は `examples/example_dxf.py` を参照してください。
 
 ## データについて
 
