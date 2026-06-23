@@ -46,24 +46,6 @@ if __name__ == "__main__":
             branch_office=True,
             protection_forests=True,
         )
-        # # ──────────────────────────────────────────────────────────────────────
-        # # 3.文字サイズの調整方法
-        # # デフォルトのサイズから大きくするには、Kwargsにて各レイヤーの文字サイズを指定します。
-        # # 文字サイズ以外にも調整は可能ですが、ほぼ使用しないと思われます。
-        # from nfj.dxf import MainAddrsDxf, SubAddrsDxf
-        # sub_addrs_dxf = SubAddrsDxf(label_size=40)
-        # main_addrs_dxf = MainAddrsDxf(label_size=50)
-        # dxf = shp.to_ziped_dxf(
-        #     gdf,
-        #     dxfversion="R2010",
-        #     main_address=True,
-        #     locality=True,
-        #     office=True,
-        #     branch_office=True,
-        #     protection_forests=True,
-        #     sub_address_dxf=sub_addrs_dxf,
-        #     main_address_dxf=main_addrs_dxf,
-        # )
 
         with open(output_path, "wb") as f:
             f.write(dxf.getvalue())

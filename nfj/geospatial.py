@@ -634,13 +634,13 @@ class GsicAddressShape(GsShapeFile):
 
         gdfs = {"小班区画": gdf}
         if main_address:
-            gdfs["林班"] = self.dissolve_by_main_address(gdf)
+            gdfs["林班区画"] = self.dissolve_by_main_address(gdf)
         if locality:
-            gdfs["国有林"] = self.dissolve_by_locality(gdf)
+            gdfs["国有林区画"] = self.dissolve_by_locality(gdf)
         if branch_office:
-            gdfs["担当区"] = self.dissolve_by_branch_office(gdf)
+            gdfs["森林事務所区画"] = self.dissolve_by_branch_office(gdf)
         if office:
-            gdfs["森林管理署"] = self.dissolve_by_office(gdf)
+            gdfs["森林管理署区画"] = self.dissolve_by_office(gdf)
         if protection_forests:
             dissolved_dict = self.dissolve_by_protection_forests(gdf)
             gdfs.update(dissolved_dict)
@@ -664,7 +664,7 @@ class GsicAddressShape(GsShapeFile):
                     zf.write(geojson_path, arcname=f"{name}.geojson")
 
             zf.writestr(
-                "小班区画データ.csv",
+                "属性値のテーブル.csv",
                 _to_csv_bytes(gdf.drop(columns="geometry")),
             )
         memory_file.seek(0)
@@ -966,17 +966,17 @@ class GsicAddressShape(GsShapeFile):
             ```
         """
         self.__check_geodataframe(gdf)
-        gdfs = {"sub_address": gdf}
+        gdfs = {"小班区画": gdf}
 
         # ディゾルブして保存する場合は、ディゾルブされたGeoDataFrameもgdfsに追加する
         if main_address:
-            gdfs["main_address"] = self.dissolve_by_main_address(gdf)
+            gdfs["林班区画"] = self.dissolve_by_main_address(gdf)
         if locality:
-            gdfs["locality"] = self.dissolve_by_locality(gdf)
+            gdfs["国有林区画"] = self.dissolve_by_locality(gdf)
         if branch_office:
-            gdfs["branch_office"] = self.dissolve_by_branch_office(gdf)
+            gdfs["森林事務所区画"] = self.dissolve_by_branch_office(gdf)
         if office:
-            gdfs["office"] = self.dissolve_by_office(gdf)
+            gdfs["森林管理署区画"] = self.dissolve_by_office(gdf)
 
         # 対応表の作成
         rename = {}
@@ -1111,7 +1111,7 @@ class GsicAddressShape(GsShapeFile):
             main_address_dxf = kwargs.get("main_address_dxf", MainAddrsDxf())
             if isinstance(main_address_dxf, MainAddrsDxf):
                 main_address_dxf.gdf = self.dissolve_by_main_address(gdf)
-                gdfs["林班主番"] = main_address_dxf
+                gdfs["林班区画"] = main_address_dxf
             else:
                 raise ValueError(
                     "main_address_dxfはMainAddrsDxfのインスタンスで指定してください。"
@@ -1122,7 +1122,7 @@ class GsicAddressShape(GsShapeFile):
             locality_dxf = kwargs.get("locality_dxf", LocalityDxf())
             if isinstance(locality_dxf, LocalityDxf):
                 locality_dxf.gdf = self.dissolve_by_locality(gdf)
-                gdfs["国有林"] = locality_dxf
+                gdfs["国有林区画"] = locality_dxf
             else:
                 raise ValueError(
                     "locality_dxfはLocalityDxfのインスタンスで指定してください。"
@@ -1133,7 +1133,7 @@ class GsicAddressShape(GsShapeFile):
             branch_office_dxf = kwargs.get("branch_office_dxf", BranchOfficeDxf())
             if isinstance(branch_office_dxf, BranchOfficeDxf):
                 branch_office_dxf.gdf = self.dissolve_by_branch_office(gdf)
-                gdfs["森林事務所"] = branch_office_dxf
+                gdfs["森林事務所区画"] = branch_office_dxf
             else:
                 raise ValueError(
                     "branch_office_dxfはBranchOfficeDxfのインスタンスで指定してください。"
@@ -1144,7 +1144,7 @@ class GsicAddressShape(GsShapeFile):
             office_dxf = kwargs.get("office_dxf", OfficeDxf())
             if isinstance(office_dxf, OfficeDxf):
                 office_dxf.gdf = self.dissolve_by_office(gdf)
-                gdfs["森林管理署"] = office_dxf
+                gdfs["森林管理署区画"] = office_dxf
             else:
                 raise ValueError(
                     "office_dxfはOfficeDxfのインスタンスで指定してください。"
