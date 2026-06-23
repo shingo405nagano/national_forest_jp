@@ -484,7 +484,7 @@ def test_to_esri_shape_file_returns_zip_with_sidecar_files_and_csv_tables():
         crs="EPSG:4326",
     )
 
-    memory_file = shape_file.to_esri_shape_file(
+    memory_file = shape_file.to_ziped_esri_shape_file(
         gdf,
         main_address=False,
         locality=False,
