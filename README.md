@@ -78,11 +78,11 @@ pytest
 ### 基本例
 
 ```python
-from nfj.geospatial import GsicAddressShape
+import nfj
 
 # 都道府県を指定して`G空間センター`から国有林の小班区画データをダウンロード
 # データはZip形式で公開されているものです。
-shp = GsicAddressShape(prefecture="滋賀県")
+shp = nfj.GsicAddressShape(prefecture="滋賀県")
 
 # ダウンロードしたデータから森林計画区域の名前を取得
 print("森林計画区域の名前:")

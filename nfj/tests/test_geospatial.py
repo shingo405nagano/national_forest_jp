@@ -9,11 +9,18 @@ import pandas as pd
 import pytest
 import shapely
 
+import nfj
+
 from ..fetch import GsShapeFile
 from ..fields import AddressFields
 from ..geopackage import GeoPackage
 from ..geospatial import GsicAddressShape, convert_wareki_to_seireki
 from ..keyhole import Kmz
+
+
+def test_package_root_exposes_gsic_address_shape():
+    assert hasattr(nfj, "GsicAddressShape")
+    assert nfj.GsicAddressShape.__name__ == "GsicAddressShape"
 
 
 class _DummyDateTime:
