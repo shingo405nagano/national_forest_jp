@@ -1150,6 +1150,10 @@ class GsicAddressShape(GsShapeFile):
         value_table = gdf.rename(columns=self.field_and_alias()).drop(
             columns="geometry"
         )
+        # コード表の作成
+        pf_coding = ProtectedForestCoding()
+        pf_csv_txt = pf_coding.original_names()
+        pf_table = pd.read_csv(io.StringIO(pf_csv_txt), encoding="shift_jis")
 
         # MemoryFileを作成して、Zip圧縮されたDXFファイルを格納する
         memory_file = io.BytesIO()
@@ -1169,6 +1173,8 @@ class GsicAddressShape(GsShapeFile):
 
             # 属性値のテーブルを作成
             zf.writestr("属性値のテーブル.csv", _to_csv_bytes(value_table))
+            # 保安林のコード表を作成
+            zf.writestr("保安林のコード表.csv", _to_csv_bytes(pf_table))
 
         memory_file.seek(0)
         return memory_file

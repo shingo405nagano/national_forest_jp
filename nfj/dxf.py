@@ -6,6 +6,9 @@ import shapely
 from ezdxf.enums import InsertUnits
 from ezdxf.layouts.layout import Modelspace
 
+from .config import ProtectedForestCoding
+from .fields import AddressFields
+
 
 class BaseDxf(pydantic.BaseModel):
     """DXFファイルに変換する際のオプションを定義するクラスです。
@@ -149,6 +152,16 @@ class SubAddrsDxf(BaseDxf):
             DXFのラベルのサイズ。デフォルトは 10。
         label_layer(str, optional):
             DXFのラベルを追加するレイヤー名。デフォルトは "小班区画ラベルレイヤー"。
+        protection_forest_mark(bool, optional):
+            保安林の短縮コードを円囲みで描画するかどうか。デフォルトは True。
+        protection_mark_layer(str, optional):
+            保安林の短縮コードを描画するレイヤー名。デフォルトは "保安林コードレイヤー"。
+        protection_mark_circle_layer(str, optional):
+            保安林の短縮コードを円囲みで描画するレイヤー名。デフォルトは "保安林コード円レイヤー"。
+        protection_mark_offset_x_factor(float, optional):
+            保安林の短縮コードを円囲みで描画する際の、円の中心と文字の左下のX方向のオフセット係数。デフォルトは 0.6。
+        protection_mark_offset_y_factor(float, optional):
+            保安林の短縮コードを円囲みで描画する際の、円の中心と文字の左下のY方向のオフセット係数。デフォルトは 0.4。
 
     Example:
         ```python
@@ -158,45 +171,136 @@ class SubAddrsDxf(BaseDxf):
         gdf = ...  # ジオデータフレームを取得
         doc = ezdxf.new(dxfversion="R2013", units=InsertUnits.Meters)
         modelspace = doc.modelspace()
-        sub_addrs_dxf = SubAddrsDxf(gdf=gdf)
+        sub_addrs_dxf = SubAddrsDxf(gdf=gdf, protection_forest_mark=True)
         sub_addrs_dxf.add_geometries(modelspace)
         doc.saveas("sub_addrs.dxf")
         ```
     """
 
-    protected_forest: bool = True
+    protection_forest_mark: bool = True
+    protection_mark_layer: str = "保安林コードレイヤー"
+    protection_mark_circle_layer: str = "保安林コード円レイヤー"
+    protection_mark_offset_x_factor: float = 0.5
+    protection_mark_offset_y_factor: float = 0.4
 
-    def _add_geometry(
+    def protection_mark_dxf_attributes(self) -> dict[str, Any]:
+        return {
+            "height": self.label_size * 0.6,
+            "layer": self.protection_mark_layer,
+        }
+
+    def protection_mark_circle_dxf_attributes(self) -> dict[str, Any]:
+        return {
+            "layer": self.protection_mark_circle_layer,
+        }
+
+    def _add_protection_marks(
         self,
         modelspace: Modelspace,
         geom: shapely.geometry.Polygon,
-        label: Optional[str] = None,
+        marks: Optional[list[str]],
     ) -> None:
-        """
-        小班区画だけは、小班名
-        """
-        # 外周の座標を取得し、座標をDXFのLWPolylineとして追加
-        exterior_coords = list(geom.exterior.coords)
-        modelspace.add_lwpolyline(
-            exterior_coords,
-            close=True,
-            dxfattribs=self.geometry_dxf_attributes(),
-        )
-        if label is not None:
-            # ラベルがある場合、Polygonと交差する点を取得してテキストを追加
-            centroid = shapely.point_on_surface(geom)
+        """保安林の短縮コードを、重ならないように円囲みで描画します。"""
+        if not marks:
+            return
+
+        marker_size = self.label_size * 0.7
+
+        base = shapely.point_on_surface(geom)
+        radius = marker_size * 0.75
+        spacing = radius * 2.5
+
+        # 小班名ラベルとの重なりを避けるため、中心点より下側に保安林コードを配置する
+        start_x = base.x - (spacing * (len(marks) - 1) / 2)
+        center_y = base.y - (marker_size * 1.8) + spacing * 0.2
+
+        for i, mark in enumerate(marks):
+            center_x = start_x + spacing * i + spacing * 0.5
+            center = (center_x, center_y)
+            # 円は文字の左下に書かれてしまう為、中心点を円の中心にするために、円の中心と文字の左下が重なるように配置する
+            circle_center_x = center_x + (
+                marker_size * self.protection_mark_offset_x_factor
+            )
+            circle_center_y = center_y + (
+                marker_size * self.protection_mark_offset_y_factor
+            )
+            circle_center = (circle_center_x, circle_center_y)
+            modelspace.add_circle(
+                circle_center,
+                radius,
+                dxfattribs=self.protection_mark_circle_dxf_attributes(),
+            )
             modelspace.add_text(
-                label, dxfattribs=self.label_dxf_attributes()
-            ).set_placement((centroid.x, centroid.y))
-        # Polygonに内周がある場合、内周の座標もDXFのLWPolylineとして追加
-        if geom.interiors:
-            for interior in geom.interiors:
-                interior_coords = list(interior.coords)
-                modelspace.add_lwpolyline(
-                    interior_coords,
-                    close=True,
-                    dxfattribs=self.geometry_dxf_attributes(),
+                mark,
+                dxfattribs=self.protection_mark_dxf_attributes(),
+            ).set_placement(center)
+
+    def protection_marks(self) -> Optional[dict[int, Optional[list[str]]]]:
+        """
+        小班区画に保安林が含まれている場合、保安林の種別に応じた短縮コードをリスト化して返します。
+        保安林が含まれていない場合は None を返します。
+        """
+        pf_coding = ProtectedForestCoding()
+
+        if self.protection_forest_mark:
+            if not isinstance(self.gdf, gpd.GeoDataFrame):
+                # GeoDataFrameでない場合はエラーを返す
+                raise ValueError(
+                    "gdf must be a GeoDataFrame to calculate protection marks."
                 )
+
+            # 保安林の要素が含まれているカラムを取得
+            addrs_fields = AddressFields()
+            pf_cols = [
+                field.en
+                for field in addrs_fields.fields.values()
+                if "protection_forest" in field.en
+            ]
+            # 保安林の種別に応じた短縮コードをリスト化して返す
+            marks = {}
+            for idx, row in self.gdf.iterrows():
+                pfs = [pf for pf in row[pf_cols].tolist() if "-" != pf]
+                if len(pfs) == 0:
+                    marks[idx] = None
+                else:
+                    codes = []
+                    for pf in pfs:
+                        code = pf_coding.mark(pf)
+                        if code is not None:
+                            codes.append(code)
+                    marks[idx] = codes if len(codes) > 0 else None
+            return marks
+        else:
+            return None
+
+    def add_geometries(
+        self,
+        modelspace: Modelspace,
+    ) -> None:
+        # ジオメトリとラベルの取り出し
+        if self.label_column is not None:
+            if self.label_column not in self.gdf.columns:
+                raise ValueError(
+                    f"Label column '{self.label_column}' does not exist in the GeoDataFrame."
+                )
+
+        marks_by_index = (
+            self.protection_marks() if self.protection_forest_mark else None
+        )
+
+        for idx, row in self.gdf.iterrows():
+            geom = row[self.geometry_column]
+            label = row[self.label_column] if self.label_column is not None else None
+            marks = marks_by_index.get(idx) if marks_by_index is not None else None
+
+            if geom.geom_type == "Polygon":
+                self._add_geometry(modelspace, geom, label)
+                self._add_protection_marks(modelspace, geom, marks)
+
+            elif geom.geom_type == "MultiPolygon":
+                for poly in geom.geoms:
+                    self._add_geometry(modelspace, poly, label)
+                    self._add_protection_marks(modelspace, poly, marks)
 
 
 class MainAddrsDxf(BaseDxf):
@@ -392,6 +496,6 @@ class ProtectionForestDxf(BaseDxf):
     """
 
     geometry_layer: str = "保安林区画レイヤー"
-    label_column: Optional[str] = "protection_forests"
+    label_column: Optional[str] = "protected_forest_type"
     label_size: int = 20
     label_layer: str = "保安林区画ラベルレイヤー"

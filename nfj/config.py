@@ -257,6 +257,21 @@ class ProtectedForestCoding(Coding):
         """
         return NF_CODING["mark"].get(code, None)
 
+    def original_names(self) -> str:
+        """G空間センターオリジナルの保安林コードとラベルの対応表を取得します。
+
+        Returns:
+            G空間センターオリジナルの保安林コードとラベルの対応表のCSV形式の文字列。
+        """
+        coding_dict = NF_CODING["description"]["protected"]
+        lines = ["短縮コード値,コード値,名称"]
+        for code, name in coding_dict.items():
+            mark = self.mark(code)
+            if mark is None:
+                mark = "-"
+            lines.append(f"{mark},{code},{name}")
+        return "\n".join(lines)
+
 
 class ConservationCoding(Coding):
     """保護林コードの変換クラス。"""
