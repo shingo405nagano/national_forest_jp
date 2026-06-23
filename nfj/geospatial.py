@@ -2,11 +2,17 @@ import datetime
 import io
 import json
 import re
+import tempfile
+import zipfile
+from pathlib import Path
 from typing import Any, Optional
 
+import ezdxf
 import fastkml
 import geopandas as gpd
+import pandas as pd
 import shapely
+from ezdxf.enums import InsertUnits
 
 from .config import (
     AuthorityCoding,
@@ -22,9 +28,18 @@ from .config import (
     ProtectedForestCoding,
     TreeNameCoding,
 )
+from .dxf import (
+    BranchOfficeDxf,
+    LocalityDxf,
+    MainAddrsDxf,
+    OfficeDxf,
+    ProtectionForestDxf,
+    SubAddrsDxf,
+)
 from .enums import OutputGeoJsonType
 from .fetch import GsShapeFile
 from .fields import (
+    AddressFields,
     BranchOfficeFields,
     FieldInfo,
     LocalityFields,
@@ -886,3 +901,280 @@ class GsicAddressShape(GsShapeFile):
             finally:
                 kmz.delete_temp_file()
         return kmz
+
+    def to_ziped_esri_shape_file(
+        self,
+        gdf: gpd.GeoDataFrame,
+        main_address: bool = True,
+        locality: bool = False,
+        branch_office: bool = False,
+        office: bool = False,
+    ) -> io.BytesIO:
+        """
+        小班区画のGeoDataFrameをESRI Shapefile形式に変換し、Zipファイルとして圧縮後、
+        メモリ上のファイルオブジェクトとして返します。Shapefileは、属性名が10バイト以内に
+        制限される為、Zipファイルの中に属性名の対応表としてCSVファイルとして保存します。
+        また、属性値もカラムを日本語にしてCSVファイルとして保存します。
+
+        Args:
+            gdf(gpd.GeoDataFrame):
+                ESRI Shapefile形式に変換する対象のGeoDataFrame。小班区画レベルの
+                GeoDataFrameである必要があります。それ以外のGeoDataFrameを渡すとエラーになります。
+            main_address(bool, optional):
+                林班主番でディゾルブして保存するかどうかを指定します。デフォルトは ``True`` です。
+            locality(bool, optional):
+                国有林の所在地でディゾルブして保存するかどうかを指定します。デフォルトは ``False`` です。
+            branch_office(bool, optional):
+                担当区でディゾルブして保存するかどうかを指定します。デフォルトは ``False`` です。
+            office(bool, optional):
+                森林管理署でディゾルブして保存するかどうかを指定します。デフォルトは ``False`` です。
+         Returns:
+            io.BytesIO:
+                変換されたShapefileを含むZipファイルの内容をバイト列として保持するメモリ上のファイルオブジェクト。
+         Example:
+            ```python
+            from nfj.geospatial import GsicAddressShape
+            shp = GsicAddressShape(prefecture="滋賀県")
+            gdf = shp.geodataframe(plan_area="湖南森林計画区")
+            zip_file = shp.to_esri_shape_file(gdf, main_address=True, locality=True
+            with open("output.zip", "wb") as f:
+                f.write(zip_file.getvalue())
+            ```
+        """
+        self.__check_geodataframe(gdf)
+        gdfs = {"sub_address": gdf}
+
+        # ディゾルブして保存する場合は、ディゾルブされたGeoDataFrameもgdfsに追加する
+        if main_address:
+            gdfs["main_address"] = self.dissolve_by_main_address(gdf)
+        if locality:
+            gdfs["locality"] = self.dissolve_by_locality(gdf)
+        if branch_office:
+            gdfs["branch_office"] = self.dissolve_by_branch_office(gdf)
+        if office:
+            gdfs["office"] = self.dissolve_by_office(gdf)
+
+        # 対応表の作成
+        rename = {}
+        correction_list = []
+        addrs_cols = AddressFields()
+        for col in gdf.columns:
+            field_info = addrs_cols.field_info(col)
+            if field_info is not None:
+                correction_list.append(
+                    {
+                        # Shapefileの属性名は10バイト以内かつ重複しない名称に調整する
+                        "shapefile": col[:10],
+                        "field": field_info.en,
+                        "alias": field_info.ja,
+                        "description": field_info.description,
+                    }
+                )
+                rename[col] = field_info.ja
+        correction_table = pd.DataFrame(correction_list)
+
+        # 属性値のテーブルを作成
+        value_table = gdf.rename(columns=rename).drop(columns="geometry")
+
+        def _to_csv_bytes(df: pd.DataFrame, encoding: str = "shift_jis") -> bytes:
+            """Encode CSV content explicitly to avoid implicit UTF-8 conversion in ZipFile."""
+            with io.StringIO() as csv_buffer:
+                df.to_csv(csv_buffer, index=False)
+                return csv_buffer.getvalue().encode(encoding)
+
+        # Zipファイルに圧縮して返す
+        memory_file = io.BytesIO()
+        with zipfile.ZipFile(
+            memory_file, mode="w", compression=zipfile.ZIP_DEFLATED
+        ) as zf:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                tmp_path = Path(tmp_dir)
+                for layer_name, layer_gdf in gdfs.items():
+                    # Shapefileを一時ディレクトリに出力し、関連ファイル一式をZipに追加
+                    shp_path = tmp_path / f"{layer_name}.shp"
+                    layer_gdf.to_file(
+                        shp_path,
+                        driver="ESRI Shapefile",
+                        encoding="utf-8",
+                    )
+                    for sidecar_path in sorted(tmp_path.glob(f"{layer_name}.*")):
+                        zf.write(sidecar_path, arcname=sidecar_path.name)
+
+            # 対応表をCSVファイルとしてZipファイルに追加
+            zf.writestr("カラム名の対応表.csv", _to_csv_bytes(correction_table))
+
+            # 属性値のテーブルをCSVファイルとしてZipファイルに追加
+            zf.writestr("属性値のテーブル.csv", _to_csv_bytes(value_table))
+
+        memory_file.seek(0)
+        return memory_file
+
+    def to_ziped_dxf(
+        self,
+        gdf: gpd.GeoDataFrame,
+        dxfversion: str = "R2010",
+        units: InsertUnits = InsertUnits.Meters,
+        main_address: bool = True,
+        locality: bool = False,
+        branch_office: bool = False,
+        office: bool = False,
+        protection_forests: bool = False,
+        **kwargs: Any,
+    ) -> io.BytesIO:
+        """
+        GeoDataFrameをDXF形式に変換し、TempDirに保存後、Zip圧縮してメモリ上のファイルオブ
+        ジェクトとして返します。DXFはCADソフトウェアで使用される形式です。Zipファイルには、
+        属性値のテーブルをCSVファイルとして保存します。
+        Args:
+            gdf(gpd.GeoDataFrame):
+                DXF形式に変換する対象のGeoDataFrame。小班区画レベルのGeoDataFrameである
+                必要があります。それ以外のGeoDataFrameを渡すとエラーになります。
+            main_address(bool, optional):
+                林班主番でディゾルブして保存するかどうかを指定します。デフォルトは ``True`` です。
+            locality(bool, optional):
+                国有林でディゾルブして保存するかどうかを指定します。デフォルトは ``False`` です。
+            branch_office(bool, optional):
+                森林事務所（担当区）でディゾルブして保存するかどうかを指定します。デフォルトは ``False`` です。
+            office(bool, optional):
+                森林管理署でディゾルブして保存するかどうかを指定します。デフォルトは ``False`` です。
+            protection_forests(bool, optional):
+                保安林の区分でディゾルブして保存するかどうかを指定します。デフォルトは ``False`` です。
+        ## Kwargs:
+            xxxDxfクラスは、GeoDataFrameを渡さずにインスタンス化する事が可能な為、ラベルサイズ
+            等を設定したDXF設定オブジェクトを引数として渡す事ができます。引数に指定されたDXF
+            設定オブジェクトは、対応するレベルのDXF出力に使用されます。指定されない場合は、デ
+            フォルトの設定オブジェクトが使用されます。
+
+             - office_dxf(OfficeDxf):
+                森林管理署レベルのDXF設定オブジェクトを指定します。
+                指定されない場合は、デフォルトの設定オブジェクトが使用されます。
+             - branch_office_dxf(BranchOfficeDxf):
+                森林事務所レベルのDXF設定オブジェクトを指定します。
+                指定されない場合は、デフォルトの設定オブジェクトが使用されます。
+             - locality_dxf(LocalityDxf):
+                国有林レベルのDXF設定オブジェクトを指定します。
+                指定されない場合は、デフォルトの設定オブジェクトが使用されます。
+             - main_address_dxf(MainAddrsDxf):
+                林班主番レベルのDXF設定オブジェクトを指定します。
+                指定されない場合は、デフォルトの設定オブジェクトが使用されます。
+             - sub_address_dxf(SubAddrsDxf):
+                小班区画レベルのDXF設定オブジェクトを指定します。
+                指定されない場合は、デフォルトの設定オブジェクトが使用されます。
+             - protection_forest_dxf(ProtectionForestDxf):
+                保安林レベルのDXF設定オブジェクトを指定します。
+                指定されない場合は、デフォルトの設定オブジェクトが使用されます。
+        Returns:
+            io.BytesIO:
+                変換されたDXFファイルの内容をバイト列として保持するメモリ上のファイルオブジェクト。
+        """
+        self.__check_geodataframe(gdf)
+
+        # kwargsから各DXF設定オブジェクトを取得し、gdfs辞書に格納
+        # 小班区画レベルのDXF設定オブジェクトを取得
+        # DXFとして出力するデータを辞書に格納していく
+        sub_addrs_dxf = kwargs.get("sub_address_dxf", SubAddrsDxf())
+        if isinstance(sub_addrs_dxf, SubAddrsDxf):
+            sub_addrs_dxf.gdf = gdf
+        else:
+            raise ValueError(
+                "sub_address_dxfはSubAddrsDxfのインスタンスで指定してください。"
+            )
+
+        gdfs: dict[str, Any] = {"小班区画": sub_addrs_dxf}
+
+        # 林班主番レベルのDXF設定オブジェクトを取得
+        if main_address:
+            main_address_dxf = kwargs.get("main_address_dxf", MainAddrsDxf())
+            if isinstance(main_address_dxf, MainAddrsDxf):
+                main_address_dxf.gdf = self.dissolve_by_main_address(gdf)
+                gdfs["林班主番"] = main_address_dxf
+            else:
+                raise ValueError(
+                    "main_address_dxfはMainAddrsDxfのインスタンスで指定してください。"
+                )
+
+        # 国有林レベルのDXF設定オブジェクトを取得
+        if locality:
+            locality_dxf = kwargs.get("locality_dxf", LocalityDxf())
+            if isinstance(locality_dxf, LocalityDxf):
+                locality_dxf.gdf = self.dissolve_by_locality(gdf)
+                gdfs["国有林"] = locality_dxf
+            else:
+                raise ValueError(
+                    "locality_dxfはLocalityDxfのインスタンスで指定してください。"
+                )
+
+        # 森林事務所レベルのDXF設定オブジェクトを取得
+        if branch_office:
+            branch_office_dxf = kwargs.get("branch_office_dxf", BranchOfficeDxf())
+            if isinstance(branch_office_dxf, BranchOfficeDxf):
+                branch_office_dxf.gdf = self.dissolve_by_branch_office(gdf)
+                gdfs["森林事務所"] = branch_office_dxf
+            else:
+                raise ValueError(
+                    "branch_office_dxfはBranchOfficeDxfのインスタンスで指定してください。"
+                )
+
+        # 森林管理署レベルのDXF設定オブジェクトを取得
+        if office:
+            office_dxf = kwargs.get("office_dxf", OfficeDxf())
+            if isinstance(office_dxf, OfficeDxf):
+                office_dxf.gdf = self.dissolve_by_office(gdf)
+                gdfs["森林管理署"] = office_dxf
+            else:
+                raise ValueError(
+                    "office_dxfはOfficeDxfのインスタンスで指定してください。"
+                )
+
+        # 保安林レベルのDXF設定オブジェクトを取得
+        if protection_forests:
+            protection_forest_dxf = kwargs.get(
+                "protection_forest_dxf", ProtectionForestDxf()
+            )
+            if isinstance(protection_forest_dxf, ProtectionForestDxf):
+                protection_forest_gdf = self.dissolve_by_protection_forests(gdf)
+                for pf, pf_gdf in protection_forest_gdf.items():
+                    gdfs[f"保安林_{pf}"] = ProtectionForestDxf(gdf=pf_gdf)
+            else:
+                raise ValueError(
+                    "protection_forest_dxfはProtectionForestDxfのインスタンスで指定してください。"
+                )
+
+        # 属性値のテーブルを作成
+        def _to_csv_bytes(df: pd.DataFrame, encoding: str = "shift_jis") -> bytes:
+            """Encode CSV content explicitly to avoid implicit UTF-8 conversion in ZipFile."""
+            with io.StringIO() as csv_buffer:
+                df.to_csv(csv_buffer, index=False)
+                return csv_buffer.getvalue().encode(encoding)
+
+        value_table = gdf.rename(columns=self.field_and_alias()).drop(
+            columns="geometry"
+        )
+        # コード表の作成
+        pf_coding = ProtectedForestCoding()
+        pf_csv_txt = pf_coding.original_names()
+        pf_table = pd.read_csv(io.StringIO(pf_csv_txt), encoding="shift_jis")
+
+        # MemoryFileを作成して、Zip圧縮されたDXFファイルを格納する
+        memory_file = io.BytesIO()
+        with zipfile.ZipFile(
+            memory_file, mode="w", compression=zipfile.ZIP_DEFLATED
+        ) as zf:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                tmp_path = Path(tmp_dir)
+                # 各DXF設定オブジェクトをDXFファイルとしてTempDirに保存
+                for layer_name, dxf_obj in gdfs.items():
+                    dxf_path = tmp_path / f"{layer_name}.dxf"
+                    doc = ezdxf.new(dxfversion=dxfversion, units=units)  # type: ignore
+                    msp = doc.modelspace()
+                    dxf_obj.add_geometries(msp)
+                    doc.saveas(dxf_path)
+                    zf.write(dxf_path, arcname=dxf_path.name)
+
+            # 属性値のテーブルを作成
+            zf.writestr("属性値のテーブル.csv", _to_csv_bytes(value_table))
+            # 保安林のコード表を作成
+            zf.writestr("保安林のコード表.csv", _to_csv_bytes(pf_table))
+
+        memory_file.seek(0)
+        return memory_file
