@@ -1,6 +1,5 @@
 import datetime
 import io
-import json
 import re
 import tempfile
 import zipfile
@@ -36,7 +35,6 @@ from .dxf import (
     ProtectionForestDxf,
     SubAddrsDxf,
 )
-from .enums import OutputGeoJsonType
 from .fetch import GsShapeFile
 from .fields import (
     AddressFields,
@@ -84,6 +82,13 @@ def convert_wareki_to_seireki(wareki: str) -> int:
             wy = int(re.findall(r"\d+", wareki)[0])
             return start_year + wy - 1
     raise ValueError(f"不明な和暦形式: {wareki}")
+
+
+def _to_csv_bytes(df: pd.DataFrame, encoding: str = "shift_jis") -> bytes:
+    """Encode CSV content explicitly to avoid implicit UTF-8 conversion in ZipFile."""
+    with io.StringIO() as csv_buffer:
+        df.to_csv(csv_buffer, index=False)
+        return csv_buffer.getvalue().encode(encoding)
 
 
 class GsicAddressShape(GsShapeFile):
@@ -573,13 +578,16 @@ class GsicAddressShape(GsShapeFile):
 
         return data
 
-    def to_geojson(
+    def to_ziped_geojson(
         self,
         gdf: gpd.GeoDataFrame,
         alias: bool = False,
-        output_dtype: OutputGeoJsonType | str | int = OutputGeoJsonType.STRING,
-        **kwargs: Any,
-    ) -> str | bytes | dict[str, Any]:
+        main_address: bool = True,
+        locality: bool = True,
+        branch_office: bool = True,
+        office: bool = True,
+        protection_forests: bool = True,
+    ) -> io.BytesIO:
         """
         GeoDataFrameをGeoJSON形式の文字列に変換します。
         フィールド名のエイリアスを適用したい場合は、``alias`` を ``True`` に設定し、
@@ -594,18 +602,21 @@ class GsicAddressShape(GsShapeFile):
                 GeoJSON形式に変換する対象のGeoDataFrame。
             alias(bool, optional):
                 フィールド名のエイリアスを適用するかどうか。デフォルトは ``False`` です。
-            output_dtype(OutputGeoJsonType, optional):
-                出力形式を指定します。デフォルトは ``OutputGeoJsonType.STRING`` です。
-                 - 0 | OutputGeoJsonType.STRING | 'string': 文字列で出力します。
-                 - 1 | OutputGeoJsonType.BYTES | 'bytes': バイト列で出力します。
-                 - 2 | OutputGeoJsonType.DICT | 'dict': 辞書形式で出力します。
-                 - 3 | OutputGeoJsonType.PATH | 'path': ファイルパスに出力します。
-            path(str, optional):
-                GeoJSONファイルの出力先パス。``OutputGeoJsonType.PATH`` を指定した場合
-                に使用されます。
+                ``True``の場合は、GeoJSONのプロパティ名としてエイリアスが使用されます。
+            main_address(bool, optional):
+                林班主番でディゾルブするかどうかを指定します。デフォルトは ``False`` です。
+            locality(bool, optional):
+                国有林の所在地でディゾルブするかどうかを指定します。 デフォルトは ``False`` です。
+            branch_office(bool, optional):
+                担当区でディゾルブするかどうかを指定します。 デフォルトは ``False`` です。
+            office(bool, optional):
+                森林管理署でディゾルブするかどうかを指定します。 デフォルトは ``False`` です。
+            protection_forests(bool, optional):
+                保安林の区分でディゾルブするかどうかを指定します。 デフォルトは ``False`` です。
+
 
         Returns:
-            GeoJSON形式の文字列、バイト列、辞書、またはファイルパス。
+            io.BytesIO: バイトストリームとしてのZip圧縮されたGeoJSON形式のファイル群
 
         Example:
             ```python
@@ -621,30 +632,43 @@ class GsicAddressShape(GsShapeFile):
         elif gdf.crs.to_epsg() != 4326:
             gdf = gdf.to_crs(epsg=4326)
 
+        gdfs = {"小班区画": gdf}
+        if main_address:
+            gdfs["林班"] = self.dissolve_by_main_address(gdf)
+        if locality:
+            gdfs["国有林"] = self.dissolve_by_locality(gdf)
+        if branch_office:
+            gdfs["担当区"] = self.dissolve_by_branch_office(gdf)
+        if office:
+            gdfs["森林管理署"] = self.dissolve_by_office(gdf)
+        if protection_forests:
+            dissolved_dict = self.dissolve_by_protection_forests(gdf)
+            gdfs.update(dissolved_dict)
+
         if alias:
-            gdf = gdf.rename(columns=self.field_and_alias())
+            renamed_gdfs = {}
+            for name, gdf in gdfs.items():
+                renamed_gdfs[name] = gdf.rename(columns=self.field_and_alias())
+            gdfs = renamed_gdfs
 
-        if isinstance(output_dtype, int):
-            output_dtype = OutputGeoJsonType(output_dtype)
-        elif isinstance(output_dtype, str):
-            output_dtype = OutputGeoJsonType[output_dtype.upper()]
+        # GeoJSON形式の文字列に変換し、Zip圧縮されたバイトストリームとして返す
+        memory_file = io.BytesIO()
+        with zipfile.ZipFile(
+            memory_file, mode="w", compression=zipfile.ZIP_DEFLATED
+        ) as zf:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                tmp_path = Path(tmp_dir)
+                for name, gdf in gdfs.items():
+                    geojson_path = tmp_path / f"{name}.geojson"
+                    gdf.to_file(geojson_path, driver="GeoJSON")
+                    zf.write(geojson_path, arcname=f"{name}.geojson")
 
-        if output_dtype == OutputGeoJsonType.STRING:
-            return json.dumps(gdf.to_geo_dict(), ensure_ascii=False)
-        elif output_dtype == OutputGeoJsonType.BYTES:
-            with io.BytesIO() as buffer:
-                gdf.to_file(buffer, driver="GeoJSON")
-                return buffer.getvalue()
-        elif output_dtype == OutputGeoJsonType.DICT:
-            return gdf.to_geo_dict()
-        elif output_dtype == OutputGeoJsonType.PATH and "path" in kwargs:
-            path = kwargs["path"]
-            if not isinstance(path, str):
-                raise ValueError("pathは文字列で指定してください。")
-            gdf.to_file(path, driver="GeoJSON")
-            return path
-        else:
-            raise ValueError(f"Unsupported output_dtype: {output_dtype}")
+            zf.writestr(
+                "小班区画データ.csv",
+                _to_csv_bytes(gdf.drop(columns="geometry")),
+            )
+        memory_file.seek(0)
+        return memory_file
 
     def to_geopackage(
         self,
@@ -1139,13 +1163,6 @@ class GsicAddressShape(GsShapeFile):
                 raise ValueError(
                     "protection_forest_dxfはProtectionForestDxfのインスタンスで指定してください。"
                 )
-
-        # 属性値のテーブルを作成
-        def _to_csv_bytes(df: pd.DataFrame, encoding: str = "shift_jis") -> bytes:
-            """Encode CSV content explicitly to avoid implicit UTF-8 conversion in ZipFile."""
-            with io.StringIO() as csv_buffer:
-                df.to_csv(csv_buffer, index=False)
-                return csv_buffer.getvalue().encode(encoding)
 
         value_table = gdf.rename(columns=self.field_and_alias()).drop(
             columns="geometry"

@@ -1,4 +1,5 @@
 import io
+import json
 import os
 import tempfile
 import zipfile
@@ -507,3 +508,65 @@ def test_to_esri_shape_file_returns_zip_with_sidecar_files_and_csv_tables():
         correction_table = pd.read_csv(io.BytesIO(correction_csv), encoding="shift_jis")
 
     assert correction_table["shapefile"].map(len).max() <= 10
+
+
+def test_to_ziped_geojson_returns_zip_with_geojson_and_csv():
+    shape_file = _make_shape_file()
+    cols = shape_file.fields.use_default_en_fields()
+    gdf = gpd.GeoDataFrame(
+        {
+            column: [shapely.Point(0, 0)] if column == "geometry" else ["-"]
+            for column in cols
+        },
+        geometry="geometry",
+        crs="EPSG:4326",
+    )
+
+    memory_file = shape_file.to_ziped_geojson(
+        gdf,
+        main_address=False,
+        locality=False,
+        branch_office=False,
+        office=False,
+        protection_forests=False,
+    )
+
+    assert isinstance(memory_file, io.BytesIO)
+    with zipfile.ZipFile(memory_file) as zf:
+        names = set(zf.namelist())
+        assert "小班区画.geojson" in names
+        assert "小班区画データ.csv" in names
+
+        csv_bytes = zf.read("小班区画データ.csv")
+        table = pd.read_csv(io.BytesIO(csv_bytes))
+
+    assert "city" in table.columns
+
+
+def test_to_ziped_geojson_alias_renames_feature_properties():
+    shape_file = _make_shape_file()
+    cols = shape_file.fields.use_default_en_fields()
+    gdf = gpd.GeoDataFrame(
+        {
+            column: [shapely.Point(0, 0)] if column == "geometry" else ["-"]
+            for column in cols
+        },
+        geometry="geometry",
+        crs="EPSG:4326",
+    )
+
+    memory_file = shape_file.to_ziped_geojson(
+        gdf,
+        alias=True,
+        main_address=False,
+        locality=False,
+        branch_office=False,
+        office=False,
+        protection_forests=False,
+    )
+
+    with zipfile.ZipFile(memory_file) as zf:
+        geojson_obj = json.loads(zf.read("小班区画.geojson").decode("utf-8"))
+
+    props = geojson_obj["features"][0]["properties"]
+    assert "市区町村" in props

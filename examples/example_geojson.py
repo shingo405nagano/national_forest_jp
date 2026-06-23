@@ -20,20 +20,19 @@ if __name__ == "__main__":
     # インスタンス化の時点で、指定した都道府県の国有林データのダウンロードが開始されます。
     pref = "東京都"
     plan_area = "多摩森林計画区"
-    output_path = Path(__file__).resolve().parent / "output_tokyo_tama.geojson"
+    output_path = Path(__file__).resolve().parent / "geoj.zip"
 
     shp = GsicAddressShape(prefecture=pref)
     try:
         gdf = shp.geodataframe(plan_area=plan_area)
         # ──────────────────────────────────────────────────────────────────────
         # 2.ダウンロードしたデータをGeoJSON形式で出力
-        # to_geojsonメソッドを使って、GeoDataFrameをGeoJSON形式の文字列として取得します。
-        # output_dtype="string"とする事で、文字列型でGeoJSON形式の文字列を取得します。
+        # to_ziped_geojsonメソッドを使って、GeoDataFrameをZip圧縮されたGeoJSON形式のバイトストリームとして取得します。
         # alias=Trueとすれば、カラム名を日本語で取得する事ができます。
-        geojson_str = shp.to_geojson(gdf, output_dtype="string", alias=False)
-        if isinstance(geojson_str, str):
-            with open(output_path, "w", encoding="utf-8") as f:
-                f.write(geojson_str)
+        ziped_geojson = shp.to_ziped_geojson(gdf, alias=True)
+
+        with open(output_path, "wb") as f:
+            f.write(ziped_geojson.getvalue())
 
         print(f"指定した都道府県: {pref}")
         print(f"指定した森林計画区: {plan_area}")
