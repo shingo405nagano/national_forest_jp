@@ -306,12 +306,12 @@ class GsicAddressShape(GsShapeFile):
             クエリの条件に一致する行を含む GeoDataFrame。
 
         ## Kwargs:
-            - plan_area: 森林計画区の名称でフィルタリングします
-            - office: 森林管理署の名称でフィルタリングします
-            - branch_office: 担当区の名称でフィルタリングします
-            - locality: 国有林の所在地でフィルタリングします
-            - main_address: 林班主番でフィルタリングします
-            - city: 市町村名でフィルタリングします
+            - plan_area(str | list[str]): 森林計画区の名称でフィルタリングします
+            - office(str | list[str]): 森林管理署の名称でフィルタリングします
+            - branch_office(str | list[str]): 担当区の名称でフィルタリングします
+            - locality(str | list[str]): 国有林の所在地でフィルタリングします
+            - main_address(int | list[int]): 林班主番でフィルタリングします
+            - city(str | list[str]): 市町村名でフィルタリングします
         """
         self.__check_geodataframe(gdf)
         q = []
@@ -1069,24 +1069,24 @@ class GsicAddressShape(GsShapeFile):
             設定オブジェクトは、対応するレベルのDXF出力に使用されます。指定されない場合は、デ
             フォルトの設定オブジェクトが使用されます。
 
-             - office_dxf(OfficeDxf):
-                森林管理署レベルのDXF設定オブジェクトを指定します。
-                指定されない場合は、デフォルトの設定オブジェクトが使用されます。
-             - branch_office_dxf(BranchOfficeDxf):
-                森林事務所レベルのDXF設定オブジェクトを指定します。
-                指定されない場合は、デフォルトの設定オブジェクトが使用されます。
-             - locality_dxf(LocalityDxf):
-                国有林レベルのDXF設定オブジェクトを指定します。
-                指定されない場合は、デフォルトの設定オブジェクトが使用されます。
-             - main_address_dxf(MainAddrsDxf):
-                林班主番レベルのDXF設定オブジェクトを指定します。
-                指定されない場合は、デフォルトの設定オブジェクトが使用されます。
-             - sub_address_dxf(SubAddrsDxf):
-                小班区画レベルのDXF設定オブジェクトを指定します。
-                指定されない場合は、デフォルトの設定オブジェクトが使用されます。
-             - protection_forest_dxf(ProtectionForestDxf):
-                保安林レベルのDXF設定オブジェクトを指定します。
-                指定されない場合は、デフォルトの設定オブジェクトが使用されます。
+             - office_label_size(int):
+                森林管理署レベルのラベルサイズを指定します。
+                指定されない場合は、デフォルトのラベルサイズが使用されます。
+             - branch_office_label_size(int):
+                森林事務所レベルのラベルサイズを指定します。
+                指定されない場合は、デフォルトのラベルサイズが使用されます。
+             - locality_label_size(int):
+                国有林レベルのラベルサイズを指定します。
+                指定されない場合は、デフォルトのラベルサイズが使用されます。
+             - main_address_label_size(int):
+                林班主番レベルのラベルサイズを指定します。
+                指定されない場合は、デフォルトのラベルサイズが使用されます。
+             - sub_address_label_size(int):
+                小班区画レベルのラベルサイズを指定します。
+                指定されない場合は、デフォルトのラベルサイズが使用されます。
+             - protection_forest_label_size(int):
+                保安林レベルのラベルサイズを指定します。
+                指定されない場合は、デフォルトのラベルサイズが使用されます。
         Returns:
             io.BytesIO:
                 変換されたDXFファイルの内容をバイト列として保持するメモリ上のファイルオブジェクト。
@@ -1096,73 +1096,66 @@ class GsicAddressShape(GsShapeFile):
         # kwargsから各DXF設定オブジェクトを取得し、gdfs辞書に格納
         # 小班区画レベルのDXF設定オブジェクトを取得
         # DXFとして出力するデータを辞書に格納していく
-        sub_addrs_dxf = kwargs.get("sub_address_dxf", SubAddrsDxf())
-        if isinstance(sub_addrs_dxf, SubAddrsDxf):
-            sub_addrs_dxf.gdf = gdf
-        else:
-            raise ValueError(
-                "sub_address_dxfはSubAddrsDxfのインスタンスで指定してください。"
-            )
+        sub_addrs_label_size = kwargs.get(
+            "sub_address_label_size", SubAddrsDxf().label_size
+        )
+        sub_addrs_dxf = SubAddrsDxf(gdf=gdf, label_size=sub_addrs_label_size)
 
         gdfs: dict[str, Any] = {"小班区画": sub_addrs_dxf}
 
         # 林班主番レベルのDXF設定オブジェクトを取得
         if main_address:
-            main_address_dxf = kwargs.get("main_address_dxf", MainAddrsDxf())
-            if isinstance(main_address_dxf, MainAddrsDxf):
-                main_address_dxf.gdf = self.dissolve_by_main_address(gdf)
-                gdfs["林班区画"] = main_address_dxf
-            else:
-                raise ValueError(
-                    "main_address_dxfはMainAddrsDxfのインスタンスで指定してください。"
-                )
+            main_address_label_size = kwargs.get(
+                "main_address_label_size", MainAddrsDxf().label_size
+            )
+            main_address_dxf = MainAddrsDxf(
+                gdf=self.dissolve_by_main_address(gdf),
+                label_size=main_address_label_size,
+            )
+            gdfs["林班区画"] = main_address_dxf
 
         # 国有林レベルのDXF設定オブジェクトを取得
         if locality:
-            locality_dxf = kwargs.get("locality_dxf", LocalityDxf())
-            if isinstance(locality_dxf, LocalityDxf):
-                locality_dxf.gdf = self.dissolve_by_locality(gdf)
-                gdfs["国有林区画"] = locality_dxf
-            else:
-                raise ValueError(
-                    "locality_dxfはLocalityDxfのインスタンスで指定してください。"
-                )
+            locality_label_size = kwargs.get(
+                "locality_label_size", LocalityDxf().label_size
+            )
+            locality_dxf = LocalityDxf(
+                gdf=self.dissolve_by_locality(gdf),
+                label_size=locality_label_size,
+            )
+            gdfs["国有林区画"] = locality_dxf
 
         # 森林事務所レベルのDXF設定オブジェクトを取得
         if branch_office:
-            branch_office_dxf = kwargs.get("branch_office_dxf", BranchOfficeDxf())
-            if isinstance(branch_office_dxf, BranchOfficeDxf):
-                branch_office_dxf.gdf = self.dissolve_by_branch_office(gdf)
-                gdfs["森林事務所区画"] = branch_office_dxf
-            else:
-                raise ValueError(
-                    "branch_office_dxfはBranchOfficeDxfのインスタンスで指定してください。"
-                )
+            branch_office_label_size = kwargs.get(
+                "branch_office_label_size", BranchOfficeDxf().label_size
+            )
+            branch_office_dxf = BranchOfficeDxf(
+                gdf=self.dissolve_by_branch_office(gdf),
+                label_size=branch_office_label_size,
+            )
+            gdfs["森林事務所区画"] = branch_office_dxf
 
         # 森林管理署レベルのDXF設定オブジェクトを取得
         if office:
-            office_dxf = kwargs.get("office_dxf", OfficeDxf())
-            if isinstance(office_dxf, OfficeDxf):
-                office_dxf.gdf = self.dissolve_by_office(gdf)
-                gdfs["森林管理署区画"] = office_dxf
-            else:
-                raise ValueError(
-                    "office_dxfはOfficeDxfのインスタンスで指定してください。"
-                )
+            office_label_size = kwargs.get("office_label_size", OfficeDxf().label_size)
+            office_dxf = OfficeDxf(
+                gdf=self.dissolve_by_office(gdf),
+                label_size=office_label_size,
+            )
+            gdfs["森林管理署区画"] = office_dxf
 
         # 保安林レベルのDXF設定オブジェクトを取得
         if protection_forests:
-            protection_forest_dxf = kwargs.get(
-                "protection_forest_dxf", ProtectionForestDxf()
+            protection_forest_label_size = kwargs.get(
+                "protection_forest_label_size", ProtectionForestDxf().label_size
             )
-            if isinstance(protection_forest_dxf, ProtectionForestDxf):
-                protection_forest_gdf = self.dissolve_by_protection_forests(gdf)
-                for pf, pf_gdf in protection_forest_gdf.items():
-                    gdfs[f"保安林_{pf}"] = ProtectionForestDxf(gdf=pf_gdf)
-            else:
-                raise ValueError(
-                    "protection_forest_dxfはProtectionForestDxfのインスタンスで指定してください。"
+            for pf, pf_gdf in self.dissolve_by_protection_forests(gdf).items():
+                pfdxf = ProtectionForestDxf(
+                    gdf=pf_gdf,
+                    label_size=protection_forest_label_size,
                 )
+                gdfs[f"保安林区画_{pf}"] = pfdxf
 
         value_table = gdf.rename(columns=self.field_and_alias()).drop(
             columns="geometry"
@@ -1182,7 +1175,12 @@ class GsicAddressShape(GsShapeFile):
                 # 各DXF設定オブジェクトをDXFファイルとしてTempDirに保存
                 for layer_name, dxf_obj in gdfs.items():
                     dxf_path = tmp_path / f"{layer_name}.dxf"
-                    doc = ezdxf.new(dxfversion=dxfversion, units=units)  # type: ignore
+                    doc = ezdxf.new(dxfversion=dxfversion, units=units, setup=True)  # type: ignore
+
+                    # フォント設定
+                    if "JP" not in doc.styles:
+                        doc.styles.new("JP", dxfattribs={"font": "MS Gothic"})
+
                     msp = doc.modelspace()
                     dxf_obj.add_geometries(msp)
                     doc.saveas(dxf_path)

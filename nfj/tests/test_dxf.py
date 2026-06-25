@@ -91,7 +91,7 @@ def test_subaddrs_add_geometries_splits_label_into_kana_and_number_parts():
     text_entities = [entity for entity in msp if entity.dxftype() == "TEXT"]
 
     assert [entity.dxf.text for entity in text_entities] == ["A", "1"]
-    assert [entity.dxf.height for entity in text_entities] == [15.0, 9.0]
+    assert [entity.dxf.height for entity in text_entities] == [15.0, 7.5]
 
 
 def test_subaddrs_add_geometries_adds_label_and_protection_mark_entities():

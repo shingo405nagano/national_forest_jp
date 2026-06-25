@@ -1,13 +1,20 @@
+import os
 from typing import Any, Optional
 
 import geopandas as gpd
 import pydantic
 import shapely
-from ezdxf.enums import InsertUnits
+from ezdxf.enums import InsertUnits, TextEntityAlignment
 from ezdxf.layouts.layout import Modelspace
+from PIL import Image, ImageDraw, ImageFont
 
 from .config import ProtectedForestCoding
 from .fields import AddressFields
+
+global windows_font_path
+windows_font_path = os.path.join(
+    os.path.dirname(__file__), "..", "others", "msgothic.ttc"
+)
 
 
 def split_sub_address_name(sub_address_name: str) -> dict[str, Optional[str]]:
@@ -28,6 +35,172 @@ def split_sub_address_name(sub_address_name: str) -> dict[str, Optional[str]]:
     # 数字の部分を抽出
     number_part = "".join([c for c in sub_address_name if c.isdigit()])
     return {"kana": kana_part, "number": number_part if number_part else None}
+
+
+def compute_visual_offset(label, font_path, font_point_size, target_height):
+    """
+    指定したフォントで描画したときの文字列の視覚的中心を計算し、DXF座標系に変換する関数
+    Args:
+        label (str): 描画する文字列
+        font_path (str): フォントファイルのパス
+        font_point_size (float): フォントサイズ（ポイント）
+        target_height (float): DXF座標系での目標高さ
+    Returns:
+        (offset_x, offset_y): DXF座標系での視覚的中心
+    """
+    # 高倍率レンダリング
+    scale = 6
+    font = ImageFont.truetype(font_path, int(font_point_size * scale))
+
+    # キャンバスとベースライン
+    canvas_w, canvas_h = 4000, 4000
+    baseline_x = 1000
+    baseline_y = 2000
+
+    img = Image.new("L", (canvas_w, canvas_h), 0)
+    draw = ImageDraw.Draw(img)
+
+    # ascent を使ってベースラインに合わせて描画
+    ascent, descent = font.getmetrics()
+    draw_y = baseline_y - ascent
+    draw.text((baseline_x, draw_y), label, font=font, fill=255)
+
+    bbox = img.getbbox()
+    if bbox is None:
+        return 0.0, 0.0
+    x0, y0, x1, y1 = bbox
+    center_x_px = (x0 + x1) / 2.0
+    center_y_px = (y0 + y1) / 2.0
+
+    # ベースライン原点に対する相対座標（Pillow の Y は下向き）
+    rel_x_px = center_x_px - baseline_x
+    rel_y_px = baseline_y - center_y_px
+
+    # rendered height を ascent に基づいてスケール（より安定）
+    # ascent はフォントサイズ * scale に近い値なのでこれを使う
+    rendered_ascent_px = ascent  # already scaled by 'scale'
+    if rendered_ascent_px == 0:
+        return 0.0, 0.0
+    scale_to_dxf = target_height / rendered_ascent_px
+
+    offset_x_dxf = rel_x_px * scale_to_dxf
+    offset_y_dxf = rel_y_px * scale_to_dxf
+
+    # 左サイドベアリング補正（経験的）
+    left_bearing_px = x0 - baseline_x
+    left_bearing_dxf = left_bearing_px * scale_to_dxf
+    # 右寄りに見えるなら左へ少し追加でずらす（符号は見た目で調整）
+    # 係数は環境依存なので小さめにしておく
+    offset_x_dxf += left_bearing_dxf * 0.7
+
+    return offset_x_dxf, offset_y_dxf
+
+
+def draw_labels(
+    msp,
+    x: float,
+    y: float,
+    main_label: str,
+    label_size: float,
+    main_addrs_number_scale: float = 0.5,
+    sub_labels: Optional[list[str]] = None,
+    sub_label_scale: float = 0.5,
+    radius_scale: float = 0.8,
+    jp_font_style_name: str = "JP",
+) -> None:
+    """
+    DXFに小班名とその下に円囲みで保安林の短縮コードを描画する関数
+    この関数では、日本語の場合中心を測る為に、Pillowを使って視覚的中心を計算し、DXF座標系に変
+    換して文字を配置する必要がある為、文字を'Ms Gothic'フォントで描画することを前提としています。
+    Args:
+        msp: ezdxfのModelspaceオブジェクト
+        x (float): 描画する位置のX座標
+        y (float): 描画する位置のY座標
+        main_label (str): 小班名の文字列
+        sub_labels (list[str]): 保安林の短縮コードのリスト
+        label_size (float): 小班名の文字サイズ
+        main_addrs_number_scale (float): 小班枝番の文字サイズのスケール（小班名に対する比率）
+        sub_label_scale (float): 保安林の短縮コードの文字サイズのスケール（小班名に対する比率）
+        radius_scale (float): 円の半径のスケール（保安林の短縮コードの文字サイズに対する比率）
+    Returns:
+        None
+    """
+
+    def text_width(h):
+        return h * 0.6
+
+    parts = split_sub_address_name(main_label)
+    kana = parts["kana"] or ""
+    number = parts["number"]  # None or str
+
+    cursor_x = x
+    cursor_y = y
+    label_spacing = label_size * 0.75  # 少し文字の間隔を空ける
+    main_addrs_number_size = label_size * main_addrs_number_scale
+    sub_label_size = label_size * sub_label_scale
+    radius = sub_label_size * radius_scale
+
+    # --- main_label: 小班主番部分 ---
+    if kana:
+        t = msp.add_text(
+            kana,
+            dxfattribs={
+                "height": label_size,
+                "style": jp_font_style_name,
+                "layer": "小班主番レイヤー",
+            },
+        )
+        t.set_placement((cursor_x, cursor_y), align=TextEntityAlignment.LEFT)
+        cursor_x += text_width(label_size) * len(kana)
+
+    number_start_x = cursor_x + label_spacing
+    # --- main_label: 小班枝番部分 ---
+    if number is not None:
+        t = msp.add_text(
+            number,
+            dxfattribs={
+                "height": main_addrs_number_size,
+                "style": jp_font_style_name,
+                "layer": "小班枝番レイヤー",
+            },
+        )
+        t.set_placement(
+            (number_start_x, cursor_y), align=TextEntityAlignment.BOTTOM_LEFT
+        )
+        cursor_x += text_width(main_addrs_number_size) * len(number)
+
+    if sub_labels is None:
+        #
+        return
+
+    # --- sub_labels: 保安林短縮コードを左から順に並べる ---
+    sub_x = x + label_spacing
+    sub_y = y - label_spacing
+
+    for s in sub_labels:
+        t = msp.add_text(
+            s,
+            dxfattribs={
+                "height": sub_label_size,
+                "style": jp_font_style_name,
+                "layer": "保安林文字レイヤー",
+            },
+        )
+        # 円の中心は TEXT の配置点そのもの
+
+        msp.add_circle((sub_x, sub_y), radius, dxfattribs={"layer": "保安林円レイヤー"})
+
+        # offsetを計算して、文字を円の中心に配置する
+        offset_x, offset_y = compute_visual_offset(
+            s, windows_font_path, sub_label_size, sub_label_size
+        )
+        t.set_placement(
+            (sub_x - offset_x, sub_y - offset_y),
+            align=TextEntityAlignment.MIDDLE_CENTER,
+        )
+
+        # 次の文字へ（直径＋間隔）
+        sub_x += radius + label_spacing
 
 
 class BaseDxf(pydantic.BaseModel):
@@ -53,7 +226,7 @@ class BaseDxf(pydantic.BaseModel):
     geometry_column: str = "geometry"
     geometry_layer: str = "小班区画レイヤー"
     label_column: Optional[str] = "sub_address_name"
-    label_size: int = 25
+    label_size: int = 23
     label_layer: str = "小班区画ラベルレイヤー"
     model_config = pydantic.ConfigDict(
         validate_default=True,
@@ -120,6 +293,9 @@ class BaseDxf(pydantic.BaseModel):
         self,
         modelspace: Modelspace,
     ) -> None:
+        if self.gdf is None:
+            raise ValueError("gdf must be provided to add geometries.")
+
         # ジオメトリとラベルの取り出し
         geoms = self.gdf[self.geometry_column].to_list()
         if self.label_column is not None:
@@ -198,54 +374,15 @@ class SubAddrsDxf(BaseDxf):
     """
 
     protection_forest_mark: bool = True
-    protection_mark_layer: str = "保安林コードレイヤー"
-    protection_mark_circle_layer: str = "保安林コード円レイヤー"
     protection_mark_offset_x_factor: float = 0.5
     protection_mark_offset_y_factor: float = 0.4
-
-    def protection_mark_dxf_attributes(self) -> dict[str, Any]:
-        return {
-            "height": self.label_size * 0.6,
-            "layer": self.protection_mark_layer,
-        }
-
-    def protection_mark_circle_dxf_attributes(self) -> dict[str, Any]:
-        return {
-            "layer": self.protection_mark_circle_layer,
-        }
-
-    def _add_label_text(
-        self,
-        modelspace: Modelspace,
-        geom: shapely.geometry.Polygon,
-        label: Optional[str] = None,
-    ) -> None:
-        if label is None:
-            return
-
-        parts = split_sub_address_name(label)
-        centroid = shapely.point_on_surface(geom)
-
-        if parts["kana"]:
-            modelspace.add_text(
-                parts["kana"],
-                dxfattribs=self.label_dxf_attributes(),
-            ).set_placement((centroid.x, centroid.y))
-
-        if parts["number"] is not None:
-            number_attributes = self.label_dxf_attributes()
-            number_attributes["height"] = self.label_size * 0.6
-            number_offset_x = self.label_size * 1.4
-            modelspace.add_text(
-                parts["number"],
-                dxfattribs=number_attributes,
-            ).set_placement((centroid.x + number_offset_x, centroid.y))
 
     def _add_geometry(
         self,
         modelspace: Modelspace,
         geom: shapely.geometry.Polygon,
         label: Optional[str] = None,
+        marks: Optional[list[str]] = None,
     ) -> None:
         exterior_coords = list(geom.exterior.coords)
         modelspace.add_lwpolyline(
@@ -253,8 +390,6 @@ class SubAddrsDxf(BaseDxf):
             close=True,
             dxfattribs=self.geometry_dxf_attributes(),
         )
-        if label is not None:
-            self._add_label_text(modelspace, geom, label)
 
         if geom.interiors:
             for interior in geom.interiors:
@@ -265,46 +400,17 @@ class SubAddrsDxf(BaseDxf):
                     dxfattribs=self.geometry_dxf_attributes(),
                 )
 
-    def _add_protection_marks(
-        self,
-        modelspace: Modelspace,
-        geom: shapely.geometry.Polygon,
-        marks: Optional[list[str]],
-    ) -> None:
-        """保安林の短縮コードを、重ならないように円囲みで描画します。"""
-        if not marks:
-            return
-
-        marker_size = self.label_size * 0.7
-
-        base = shapely.point_on_surface(geom)
-        radius = marker_size * 0.75
-        spacing = radius * 2.5
-
-        # 小班名ラベルとの重なりを避けるため、中心点より下側に保安林コードを配置する
-        start_x = base.x - (spacing * (len(marks) - 1) / 2)
-        center_y = base.y - (marker_size * 1.8) + spacing * 0.2
-
-        for i, mark in enumerate(marks):
-            center_x = start_x + spacing * i + spacing * 0.5
-            center = (center_x, center_y)
-            # 円は文字の左下に書かれてしまう為、中心点を円の中心にするために、円の中心と文字の左下が重なるように配置する
-            circle_center_x = center_x + (
-                marker_size * self.protection_mark_offset_x_factor
+        if label is not None:
+            # ラベルがある場合、Polygonと交差する点を取得してテキストを追加
+            centroid = shapely.point_on_surface(geom)
+            draw_labels(
+                modelspace,
+                centroid.x,
+                centroid.y,
+                main_label=label,
+                sub_labels=marks,
+                label_size=self.label_size,
             )
-            circle_center_y = center_y + (
-                marker_size * self.protection_mark_offset_y_factor
-            )
-            circle_center = (circle_center_x, circle_center_y)
-            modelspace.add_circle(
-                circle_center,
-                radius,
-                dxfattribs=self.protection_mark_circle_dxf_attributes(),
-            )
-            modelspace.add_text(
-                mark,
-                dxfattribs=self.protection_mark_dxf_attributes(),
-            ).set_placement(center)
 
     def protection_marks(self) -> Optional[dict[int, Optional[list[str]]]]:
         """
@@ -349,6 +455,9 @@ class SubAddrsDxf(BaseDxf):
         modelspace: Modelspace,
     ) -> None:
         # ジオメトリとラベルの取り出し
+        if self.gdf is None:
+            raise ValueError("gdf must be provided to add geometries.")
+
         if self.label_column is not None:
             if self.label_column not in self.gdf.columns:
                 raise ValueError(
@@ -365,13 +474,11 @@ class SubAddrsDxf(BaseDxf):
             marks = marks_by_index.get(idx) if marks_by_index is not None else None
 
             if geom.geom_type == "Polygon":
-                self._add_geometry(modelspace, geom, label)
-                self._add_protection_marks(modelspace, geom, marks)
+                self._add_geometry(modelspace, geom, label, marks)
 
             elif geom.geom_type == "MultiPolygon":
                 for poly in geom.geoms:
-                    self._add_geometry(modelspace, poly, label)
-                    self._add_protection_marks(modelspace, poly, marks)
+                    self._add_geometry(modelspace, poly, label, marks)
 
 
 class MainAddrsDxf(BaseDxf):
@@ -409,7 +516,7 @@ class MainAddrsDxf(BaseDxf):
 
     geometry_layer: str = "林班区画レイヤー"
     label_column: Optional[str] = "main_address"
-    label_size: int = 35
+    label_size: int = 40
     label_layer: str = "林班区画ラベルレイヤー"
 
 

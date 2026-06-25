@@ -4,6 +4,7 @@ import os
 import tempfile
 import zipfile
 
+import fastkml
 import geopandas as gpd
 import pandas as pd
 import pytest
@@ -15,7 +16,7 @@ from ..fetch import GsShapeFile
 from ..fields import AddressFields
 from ..geopackage import GeoPackage
 from ..geospatial import GsicAddressShape, convert_wareki_to_seireki
-from ..keyhole import Kmz
+from ..keyhole import Kmz, SubAddressKmlKwargs
 
 
 def test_package_root_exposes_gsic_address_shape():
@@ -331,6 +332,118 @@ def test_query_filters_matching_rows():
     assert result.loc[0, "city"] == "ABC"
 
 
+def test_to_kml_doc_rejects_invalid_kwargs_and_valid_doc_is_created():
+    shape_file = _make_shape_file()
+    cols = shape_file.fields.use_default_en_fields()
+    gdf = gpd.GeoDataFrame(
+        {
+            column: ["-" if column != "geometry" else shapely.Point(0, 0)]
+            for column in cols
+        },
+        geometry="geometry",
+        crs="EPSG:4326",
+    )
+    gdf = gdf.set_geometry("geometry")
+
+    with pytest.raises(ValueError):
+        shape_file.to_kml_doc(object())
+
+    with pytest.raises(ValueError):
+        shape_file.to_kml_doc(type("BadKwargs", (), {"gdf": gdf, "label": True})())
+
+    kwargs = SubAddressKmlKwargs(gdf=gdf, label=False, folder_name="test")
+    doc = shape_file.to_kml_doc(kwargs)
+    assert isinstance(doc, fastkml.Document)
+
+
+def test_dissolve_by_protection_forests_groups_by_protection_code():
+    shape_file = _make_shape_file()
+    cols = shape_file.fields.use_default_en_fields()
+
+    gdf = gpd.GeoDataFrame(
+        {
+            column: ["-"] * 2
+            if column != "geometry"
+            else gpd.GeoSeries(
+                [shapely.Point(0, 0), shapely.Point(1, 1)], crs="EPSG:4326"
+            )
+            for column in cols
+        },
+        geometry="geometry",
+        crs="EPSG:4326",
+    )
+    gdf.at[0, "protection_forest_1"] = "A"
+    gdf.at[0, "protection_forest_2"] = "-"
+    gdf.at[0, "protection_forest_3"] = "-"
+    gdf.at[0, "protection_forest_4"] = "-"
+    gdf.at[1, "protection_forest_1"] = "B"
+
+    result = shape_file.dissolve_by_protection_forests(gdf)
+
+    assert set(result.keys()) == {"A", "B"}
+    assert all(isinstance(value, gpd.GeoDataFrame) for value in result.values())
+
+
+def test_to_geopackage_writes_protection_forest_layers(monkeypatch):
+    shape_file = _make_shape_file()
+    cols = shape_file.fields.use_default_en_fields()
+    gdf = gpd.GeoDataFrame(
+        {
+            column: ["-" if column != "geometry" else shapely.Point(0, 0)]
+            for column in cols
+        },
+        geometry="geometry",
+        crs="EPSG:4326",
+    )
+    gdf = gdf.set_geometry("geometry")
+    gdf.loc[0, "protection_forest_1"] = "A"
+
+    gpkg = GeoPackage()
+    try:
+        result = shape_file.to_geopackage(
+            gdf,
+            layer="sub_address",
+            alias=False,
+            gpkg=gpkg,
+            protection_forests=True,
+        )
+
+        assert result is gpkg
+        assert os.path.exists(gpkg.temp_file_path)
+    finally:
+        gpkg.delete_temp_file()
+
+
+def test_to_ziped_dxf_writes_dxf_and_csv_tables():
+    shape_file = _make_shape_file()
+    cols = shape_file.fields.use_default_en_fields()
+    gdf = gpd.GeoDataFrame(
+        {
+            column: ["-" if column != "geometry" else shapely.box(0, 0, 1, 1)]
+            for column in cols
+        },
+        geometry="geometry",
+        crs="EPSG:4326",
+    )
+    gdf.loc[0, "sub_address_name"] = "A-1"
+
+    memory_file = shape_file.to_ziped_dxf(
+        gdf,
+        main_address=False,
+        locality=False,
+        branch_office=False,
+        office=False,
+        protection_forests=True,
+    )
+
+    assert isinstance(memory_file, io.BytesIO)
+    with zipfile.ZipFile(memory_file) as zf:
+        names = set(zf.namelist())
+        assert "小班区画.dxf" in names
+        assert "属性値のテーブル.csv" in names
+        assert "保安林のコード表.csv" in names
+
+
 def test_kmz_save_creates_parent_dir_and_copies_file(tmp_path):
     source_path = tmp_path / "source.kmz"
     source_path.write_bytes(b"kmz-data")
@@ -370,7 +483,12 @@ def test_kmz_save_from_tempfile_makes_output_readable_by_others(tmp_path):
 def test_to_kmz_returns_bytesio_when_requested(monkeypatch):
     shape_file = _make_shape_file()
     gdf = gpd.GeoDataFrame(
-        {"geometry": [shapely.Point(0, 0)]}, geometry="geometry", crs="EPSG:4326"
+        {
+            "sub_address_name": ["A-1"],
+            "geometry": [shapely.Point(0, 0)],
+        },
+        geometry="geometry",
+        crs="EPSG:4326",
     )
 
     monkeypatch.setattr(
@@ -379,7 +497,11 @@ def test_to_kmz_returns_bytesio_when_requested(monkeypatch):
         lambda _: None,
     )
     monkeypatch.setattr("nfj.geospatial.SubAddressKmlKwargs", lambda gdf: object())
-    monkeypatch.setattr(shape_file, "to_kml_doc", lambda kwargs: object())
+    monkeypatch.setattr(
+        shape_file,
+        "to_kml_doc",
+        lambda kwargs: fastkml.Document(name="dummy"),
+    )
 
     created_paths = []
     deleted_paths = []
@@ -424,7 +546,12 @@ def test_to_kmz_returns_bytesio_when_requested(monkeypatch):
 def test_to_kmz_returns_kmz_object_by_default(monkeypatch):
     shape_file = _make_shape_file()
     gdf = gpd.GeoDataFrame(
-        {"geometry": [shapely.Point(0, 0)]}, geometry="geometry", crs="EPSG:4326"
+        {
+            "sub_address_name": ["A-1"],
+            "geometry": [shapely.Point(0, 0)],
+        },
+        geometry="geometry",
+        crs="EPSG:4326",
     )
 
     monkeypatch.setattr(
@@ -433,7 +560,11 @@ def test_to_kmz_returns_kmz_object_by_default(monkeypatch):
         lambda _: None,
     )
     monkeypatch.setattr("nfj.geospatial.SubAddressKmlKwargs", lambda gdf: object())
-    monkeypatch.setattr(shape_file, "to_kml_doc", lambda kwargs: object())
+    monkeypatch.setattr(
+        shape_file,
+        "to_kml_doc",
+        lambda kwargs: fastkml.Document(name="dummy"),
+    )
 
     class FakeKmz:
         def __init__(self, name, document_list):
@@ -452,8 +583,8 @@ def test_to_kmz_returns_kmz_object_by_default(monkeypatch):
         return_memory_file=False,
     )
 
-    assert isinstance(result, FakeKmz)
     assert result.name == "国有林区画データ"
+    assert len(result.document_list) == 1
 
 
 def test_to_geopackage_validates_before_writing_when_dissolve_requested(monkeypatch):
@@ -503,9 +634,9 @@ def test_to_esri_shape_file_returns_zip_with_sidecar_files_and_csv_tables():
     assert isinstance(memory_file, io.BytesIO)
     with zipfile.ZipFile(memory_file) as zf:
         names = set(zf.namelist())
-        assert "sub_address.shp" in names
-        assert "sub_address.shx" in names
-        assert "sub_address.dbf" in names
+        assert "小班区画.shp" in names
+        assert "小班区画.shx" in names
+        assert "小班区画.dbf" in names
         assert "カラム名の対応表.csv" in names
         assert "属性値のテーブル.csv" in names
 
@@ -542,9 +673,9 @@ def test_to_ziped_geojson_returns_zip_with_geojson_and_csv():
     with zipfile.ZipFile(memory_file) as zf:
         names = set(zf.namelist())
         assert "小班区画.geojson" in names
-        assert "小班区画データ.csv" in names
+        assert "属性値のテーブル.csv" in names
 
-        csv_bytes = zf.read("小班区画データ.csv")
+        csv_bytes = zf.read("属性値のテーブル.csv")
         table = pd.read_csv(io.BytesIO(csv_bytes))
 
     assert "city" in table.columns
