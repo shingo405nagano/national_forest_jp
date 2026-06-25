@@ -10,10 +10,6 @@ from typing import Optional
 
 import yaml
 
-from .logging_config import get_logger
-
-logger = get_logger(__name__)
-
 conf_dir = os.path.join(os.path.dirname(__file__), ".confs")
 
 _fields_yaml = os.path.join(conf_dir, "fields.yaml")
@@ -60,7 +56,6 @@ def encode(code: str, dictionary: dict) -> int:
             代替値として ``0`` を返します。
     """
     if code not in dictionary:
-        logger.warning(f"コード '{code}' は辞書に存在しません。代替値 0 を返します。")
         return 0
     return dictionary[code]
 
@@ -82,7 +77,6 @@ def decode(code: int, dictionary: dict) -> str:
     for key, value in dictionary.items():
         if value == code:
             return key
-    logger.warning(f"コード '{code}' は辞書に存在しません。代替値 '-' を返します。")
     return "-"
 
 

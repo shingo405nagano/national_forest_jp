@@ -21,10 +21,10 @@ import yaml
 
 from .config import URLS
 from .fields import AddressFields, _AddrsColumns
-from .logging_config import get_logger
+from .logging_config import setup_logger
 from .utils import txt_normalizer
 
-logger = get_logger(__name__)
+logger = setup_logger(__name__)
 
 
 class GsFile(StrEnum):
@@ -55,7 +55,9 @@ class Fetcher(object):
             ValueError: 指定された年に対応する URL 設定が存在しない場合。
         """
         if year not in URLS:
-            raise ValueError(f"指定された年 {year} の URL が存在しません。")
+            msg = f"Not found URL settings for year {year}. Available years: {list(URLS.keys())}"
+            logger.error(msg)
+            raise ValueError(msg)
         self.urls = URLS[year]
 
     def check_url(self, prefecture: str) -> bool:
@@ -76,12 +78,13 @@ class Fetcher(object):
             results = [pref for pref in self.urls.keys() if pattern.search(pref)]
             if results:
                 logger.warning(
-                    f"都道府県 '{prefecture}' の URL が見つかりませんでした。"
-                    f"類似する都道府県名: {', '.join(results)}"
+                    f"Not found URL for prefecture '{prefecture}'."
+                    f" Similar prefecture names: {', '.join(results)}"
                 )
             else:
                 logger.warning(
-                    f"都道府県 '{prefecture}' の URL が見つかりませんでした。"
+                    f"Not found URL for prefecture '{prefecture}'. "
+                    f"Available prefectures: {', '.join(self.urls.keys())}"
                 )
             return False
         url = self.urls[prefecture]
@@ -90,7 +93,7 @@ class Fetcher(object):
             response.raise_for_status()
             return True
         except requests.RequestException as e:
-            logger.warning(f"URL '{url}' にアクセスできませんでした: {e}")
+            logger.warning(f"Failed to access URL for prefecture '{prefecture}': {e}")
             return False
 
 
@@ -122,10 +125,14 @@ class GsShapeFile(object):
         Warns:
             UserWarning: 林道カテゴリ選択時に、対応フィールドが未定義であることを警告します。
         """
+        logger.info(
+            f"Initializing GsShapeFile for prefecture '{prefecture}', year {year}, "
+            f"category '{category}', endswith '{endswith}'."
+        )
         # URLの確認
         fetcher = Fetcher(year)
-        if not fetcher.check_url(prefecture):
-            raise ValueError(f"都道府県 '{prefecture}' の URL を確認できませんでした。")
+        assert fetcher.check_url(prefecture)
+
         self.url = fetcher.urls[prefecture]
         # フィールドの初期化
         if category.upper() == GsFile.ADDRESS.name:
@@ -136,10 +143,10 @@ class GsShapeFile(object):
             self.fields: AddressFields = AddressFields()  # ダミーのフィールドを使用
             self.file_name = GsFile.FOREST_ROAD.value + endswith
         else:
-            raise ValueError(
-                f"カテゴリ '{category}' は 'address' または 'road' のいずれかで"
-                "なければなりません。"
-            )
+            msg = f"{category} is not a valid category. Must be 'address' or 'road'."
+            logger.error(msg)
+            raise ValueError(msg)
+
         self.endswith = endswith
         self.zip_file: Optional[zipfile.ZipFile] = None
         self.file_names: list[str] = []
@@ -159,14 +166,17 @@ class GsShapeFile(object):
             ValueError: ダウンロードに失敗した場合。
         """
         try:
+            logger.debug(f"Downloading data from URL: {self.url}")
             timeout = 600  # タイムアウトを10分に設定
             response = requests.get(self.url, timeout=timeout)
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
-            raise ValueError(
-                f"URL '{self.url}' からデータをダウンロードできませんでした。エラー: {e}"
-                f"タイムアウト({timeout}秒)やネットワークの問題が原因である可能性があります。"
+            msg = (
+                f"Failed to download data from URL '{self.url}'. Error: {e}. "
+                f"This may be due to a timeout ({timeout} seconds) or network issues."
             )
+            logger.error(msg)
+            raise ValueError(msg)
 
         zip_buffer = io.BytesIO(response.content)
         self.zip_file = zipfile.ZipFile(zip_buffer)
@@ -189,13 +199,17 @@ class GsShapeFile(object):
             ValueError: 展開先ディレクトリ外を指す不正なパスが含まれる場合。
         """
         if not self.zip_file or not self.temp_dir_path:
-            raise ValueError("ZIPファイルまたは一時ディレクトリが未初期化です。")
+            msg = "Neither ZIP file nor temporary directory is initialized."
+            logger.error(msg)
+            raise ValueError(msg)
 
         base_dir = os.path.abspath(self.temp_dir_path)
         for member in self.zip_file.infolist():
             member_path = os.path.abspath(os.path.join(base_dir, member.filename))
             if os.path.commonpath([base_dir, member_path]) != base_dir:
-                raise ValueError("ZIPに不正なパスが含まれています。")
+                msg = "Attempted Path Traversal in ZIP file: " + member.filename
+                logger.error(msg)
+                raise ValueError(msg)
 
         self.zip_file.extractall(path=base_dir)
 
@@ -209,7 +223,9 @@ class GsShapeFile(object):
             ValueError: 一時ディレクトリが未初期化の場合。
         """
         if not self.temp_dir_path:
-            raise ValueError("Tempディレクトリが初期化されていません。")
+            msg = "Temporary directory is not initialized."
+            logger.error(msg)
+            raise ValueError(msg)
 
         top_dirs = []
         for name in self.file_names:
@@ -245,9 +261,11 @@ class GsShapeFile(object):
             抽出した森林計画区名の一覧。展開先が無効な場合は空リスト。
         """
         if not self.extract_root_path or not os.path.isdir(self.extract_root_path):
-            logger.info(
-                "`download_and_extract` 実行前の為、森林計画区名を取得できません。空リストを返します。"
+            msg = (
+                "Extract root path is not set or does not exist. "
+                "Returning an empty list of plan area names."
             )
+            logger.warning(msg)
             return []
 
         plan_area_names = []
@@ -275,7 +293,9 @@ class GsShapeFile(object):
             ValueError: 条件に一致するファイルが見つからない場合。
         """
         if not self.extract_root_path or not os.path.isdir(self.extract_root_path):
-            raise ValueError("データ展開先ディレクトリが存在しません。")
+            msg = "Extract root path is not set or does not exist. Cannot select file path."
+            logger.error(msg)
+            raise ValueError(msg)
 
         for entry in os.listdir(self.extract_root_path):
             plan_area_dir = os.path.join(self.extract_root_path, entry)
@@ -291,11 +311,13 @@ class GsShapeFile(object):
                     if self.file_name in filename and filename.endswith(self.endswith):
                         return os.path.join(root, filename)
 
-        raise ValueError(
+        msg = (
             "指定された条件に対応するファイルが見つかりませんでした。"
             f"条件: plan_area='{plan_area}', file_name='{self.file_name}', "
             f"存在する計画区: {', '.join(self.plan_area_names)}"
         )
+        logger.error(msg)
+        raise ValueError(msg)
 
     def _read_file(self, plan_area: str) -> gpd.GeoDataFrame:
         """指定された森林計画区の Shapefile を読み込んで GeoDataFrame として返します。
@@ -315,9 +337,9 @@ class GsShapeFile(object):
             gdf = pyogrio.read_dataframe(file_path)
             return gdf
         except Exception as e:
-            raise ValueError(
-                f"ファイル '{file_path}' の読み込みに失敗しました。エラー: {e}"
-            )
+            msg = f"Failed to read Shapefile at '{file_path}'. Error: {e}"
+            logger.error(msg)
+            raise ValueError(msg)
 
     def summary(self, **kwargs: Any) -> dict[str, Any]:
         """ダウンロードしたZipファイルに保存されているデータの概要を返します。

@@ -10,6 +10,9 @@ from PIL import Image, ImageDraw, ImageFont
 
 from .config import ProtectedForestCoding
 from .fields import AddressFields
+from .logging_config import setup_logger
+
+logger = setup_logger(__name__)
 
 global windows_font_path
 windows_font_path = os.path.join(
@@ -170,7 +173,6 @@ def draw_labels(
         cursor_x += text_width(main_addrs_number_size) * len(number)
 
     if sub_labels is None:
-        #
         return
 
     # --- sub_labels: 保安林短縮コードを左から順に並べる ---
@@ -226,7 +228,7 @@ class BaseDxf(pydantic.BaseModel):
     geometry_column: str = "geometry"
     geometry_layer: str = "小班区画レイヤー"
     label_column: Optional[str] = "sub_address_name"
-    label_size: int = 23
+    label_size: int = 20
     label_layer: str = "小班区画ラベルレイヤー"
     model_config = pydantic.ConfigDict(
         validate_default=True,
@@ -294,7 +296,9 @@ class BaseDxf(pydantic.BaseModel):
         modelspace: Modelspace,
     ) -> None:
         if self.gdf is None:
-            raise ValueError("gdf must be provided to add geometries.")
+            msg = "gdf must be provided to add geometries."
+            logger.error(msg)
+            raise ValueError(msg)
 
         # ジオメトリとラベルの取り出し
         geoms = self.gdf[self.geometry_column].to_list()
@@ -302,9 +306,9 @@ class BaseDxf(pydantic.BaseModel):
             if self.label_column in self.gdf.columns:
                 labels = self.gdf[self.label_column].to_list()
             else:
-                raise ValueError(
-                    f"Label column '{self.label_column}' does not exist in the GeoDataFrame."
-                )
+                msg = f"Label column '{self.label_column}' does not exist in the GeoDataFrame."
+                logger.error(msg)
+                raise ValueError(msg)
         else:
             labels = None
 
@@ -456,13 +460,15 @@ class SubAddrsDxf(BaseDxf):
     ) -> None:
         # ジオメトリとラベルの取り出し
         if self.gdf is None:
-            raise ValueError("gdf must be provided to add geometries.")
+            msg = "gdf must be provided to add geometries."
+            logger.error(msg)
+            raise ValueError(msg)
 
         if self.label_column is not None:
             if self.label_column not in self.gdf.columns:
-                raise ValueError(
-                    f"Label column '{self.label_column}' does not exist in the GeoDataFrame."
-                )
+                msg = f"Label column '{self.label_column}' does not exist in the GeoDataFrame."
+                logger.error(msg)
+                raise ValueError(msg)
 
         marks_by_index = (
             self.protection_marks() if self.protection_forest_mark else None
@@ -471,7 +477,7 @@ class SubAddrsDxf(BaseDxf):
         for idx, row in self.gdf.iterrows():
             geom = row[self.geometry_column]
             label = row[self.label_column] if self.label_column is not None else None
-            marks = marks_by_index.get(idx) if marks_by_index is not None else None
+            marks = marks_by_index.get(idx) if marks_by_index is not None else None  # type: ignore
 
             if geom.geom_type == "Polygon":
                 self._add_geometry(modelspace, geom, label, marks)

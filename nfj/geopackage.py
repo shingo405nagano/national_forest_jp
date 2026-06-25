@@ -6,9 +6,9 @@ from typing import Optional
 
 import geopandas as gpd
 
-from .logging_config import get_logger
+from .logging_config import setup_logger
 
-logger = get_logger(__name__)
+logger = setup_logger(__name__)
 
 
 class GeoPackage(object):
@@ -68,23 +68,25 @@ class GeoPackage(object):
                 保存先のファイルパス。例: "output.gpkg"
         """
         if not isinstance(output_path, str):
-            raise ValueError("output_pathは文字列で指定してください。")
+            msg = (
+                f"output_pathは文字列で指定してください。現在の型: {type(output_path)}"
+            )
+            logger.error(msg)
+            raise ValueError(msg)
 
         output_dir = os.path.dirname(output_path)
         if output_dir:
             os.makedirs(output_dir, exist_ok=True)
 
         shutil.copy(self.temp_file_path, output_path)
-        logger.info(f"GeoPackageファイルが '{output_path}' として保存されました。")
+        logger.info(f"Saved GeoPackage file to: {output_path}")
 
     def delete_temp_file(self):
         if os.path.exists(self.temp_file_path):
             os.remove(self.temp_file_path)
 
     def add_alias(self, table_name, field_and_alias: dict[str, str]):
-        logger.info(
-            f"GeoPackageファイルのテーブル'{table_name}'にエイリアスを追加します。"
-        )
+        logger.debug(f"Adding aliases to table '{table_name}' in GeoPackage file.")
         conn = None
         try:
             conn = sqlite3.connect(self.temp_file_path)
@@ -95,7 +97,7 @@ class GeoPackage(object):
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='gpkg_extensions';"
             )
             if not cursor.fetchone():
-                logger.info("gpkg_extensions テーブルを作成します。")
+                logger.debug("Creating gpkg_extensions table.")
                 cursor.execute("""
                     CREATE TABLE gpkg_extensions (
                         table_name TEXT,
@@ -114,7 +116,7 @@ class GeoPackage(object):
             )
             if not cursor.fetchone():
                 logger.debug(
-                    "gpkg_schema 拡張を gpkg_extensions テーブルに登録します。"
+                    "Registering gpkg_schema extension in gpkg_extensions table."
                 )
                 cursor.execute("""
                     INSERT INTO gpkg_extensions (table_name, column_name, extension_name, definition, scope)
@@ -127,7 +129,7 @@ class GeoPackage(object):
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='gpkg_data_columns';"
             )
             if not cursor.fetchone():
-                logger.info("gpkg_data_columns テーブルを作成します。")
+                logger.debug("Creating gpkg_data_columns table.")
                 cursor.execute("""
                     CREATE TABLE gpkg_data_columns (
                     table_name TEXT NOT NULL,
@@ -172,11 +174,11 @@ class GeoPackage(object):
                 conn.commit()
 
             logger.info(
-                f"テーブル '{table_name}' のフィールドエイリアスが gpkg_data_columns テーブルに追加/更新されました。"
+                f"Added/Updated aliases for table '{table_name}' in GeoPackage file."
             )
 
         except sqlite3.Error as e:
-            logger.error(f"データベースエラーが発生しました: {e}")
+            logger.error(f"SQLite error occurred: {e}")
             raise
         finally:
             if conn:

@@ -16,9 +16,9 @@ from matplotlib.colors import to_rgba
 from pygeoif.types import GeoCollectionInterface, GeoInterface
 
 from .fields import AddressFields
-from .logging_config import get_logger
+from .logging_config import setup_logger
 
-logger = get_logger(__name__)
+logger = setup_logger(__name__)
 
 global OVERLAY_IMG
 OVERLAY_IMG = os.path.join(
@@ -125,13 +125,16 @@ class KmlKwargs(pydantic.BaseModel):
     @pydantic.field_validator("gdf", mode="before")
     def validate_gdf(cls, v):
         if not isinstance(v, gpd.GeoDataFrame):
-            raise ValueError("`gdf`はGeoDataFrameでなければなりません。")
+            msg = f"`gdf`の値 '{v}' はGeoDataFrameではありません。"
+            logger.error(msg)
+            raise ValueError(msg)
         if v.crs is None:
-            raise ValueError("`gdf`のCRSが定義されていません。")
+            msg = "`gdf`のCRSが定義されていません。"
+            logger.error(msg)
+            raise ValueError(msg)
         elif v.crs.to_epsg() != 4326:
-            logger.warning(
-                "`gdf`のCRSがEPSG:4326ではありません。ジオメトリ列をEPSG:4326に変換します。"
-            )
+            msg = "`gdf`のCRSがEPSG:4326ではありません。ジオメトリ列をEPSG:4326に変換します。"
+            logger.warning(msg)
             v = v.to_crs(epsg=4326)
         return v
 
@@ -139,20 +142,26 @@ class KmlKwargs(pydantic.BaseModel):
     def validate_name_column(cls, v, info):
         gdf = info.data.get("gdf")
         if not isinstance(v, str):
-            raise ValueError("`name_column`は文字列でなければなりません。")
+            msg = f"`name_column`の値 '{v}' は文字列ではありません。"
+            logger.error(msg)
+            raise ValueError(msg)
         if gdf is not None and v not in gdf.columns:
-            raise ValueError(f"`name_column`の値 '{v}' は`gdf`のカラムに存在しません。")
+            msg = f"`name_column`の値 '{v}' は`gdf`のカラムに存在しません。"
+            logger.error(msg)
+            raise ValueError(msg)
         return v
 
     @pydantic.field_validator("geometry_column", mode="before")
     def validate_geometry_column(cls, v, info):
         gdf = info.data.get("gdf")
         if not isinstance(v, str):
-            raise ValueError("`geometry_column`は文字列でなければなりません。")
+            msg = f"`geometry_column`の値 '{v}' は文字列ではありません。"
+            logger.error(msg)
+            raise ValueError(msg)
         if gdf is not None and v not in gdf.columns:
-            raise ValueError(
-                f"`geometry_column`の値 '{v}' は`gdf`のカラムに存在しません。"
-            )
+            msg = f"`geometry_column`の値 '{v}' は`gdf`のカラムに存在しません。"
+            logger.error(msg)
+            raise ValueError(msg)
         return v
 
     @pydantic.field_validator(
@@ -160,11 +169,15 @@ class KmlKwargs(pydantic.BaseModel):
     )
     def validate_hex_color(cls, v):
         if not isinstance(v, str):
-            raise ValueError("カラーコードは文字列でなければなりません。")
+            msg = "カラーコードは文字列でなければなりません。"
+            logger.error(msg)
+            raise ValueError(msg)
         try:
             to_rgba(v)
         except ValueError:
-            raise ValueError(f"'{v}'は有効な16進カラーコードではありません。")
+            msg = f"'{v}'は有効な16進カラーコードではありません。"
+            logger.error(msg)
+            raise ValueError(msg)
         return v
 
     @pydantic.field_validator("altitude_mode", mode="before")
@@ -173,22 +186,28 @@ class KmlKwargs(pydantic.BaseModel):
             try:
                 v = AltitudeMode[v]
             except KeyError:
-                raise ValueError(
+                msg = (
                     f"'{v}'は有効なAltitudeModeの値ではありません。"
                     "有効な値は'clamp_to_ground'、'relative_to_ground'、'absolute'"
                     "'clamp_to_sea_floor'、'relative_to_sea_floor'のいずれかです。"
                 )
+                logger.error(msg)
+                raise ValueError(msg)
         elif isinstance(v, int):
             try:
                 v = AltitudeMode(v)
             except ValueError:
-                raise ValueError(
+                msg = (
                     f"'{v}'は有効なAltitudeModeの値ではありません。"
                     "有効な値は0（clamp_to_ground）、1（relative_to_ground）、2（absolute）、"
                     "3（clamp_to_sea_floor）、4（relative_to_sea_floor）のいずれかです。"
                 )
+                logger.error(msg)
+                raise ValueError(msg)
         if not isinstance(v, AltitudeMode):
-            raise ValueError("`altitude_mode`はAltitudeModeの値でなければなりません。")
+            msg = "`altitude_mode`はAltitudeModeの値でなければなりません。"
+            logger.error(msg)
+            raise ValueError(msg)
         return v
 
 
@@ -555,7 +574,9 @@ class KeyholeMarkupLanguage(object):
             gpd.GeoDataFrame: CRSがEPSG:4326のGeoDataFrame
         """
         if gdf.crs is None:
-            raise ValueError("'gdf'(GeoDataFrame)のCRSが定義されていません。")
+            msg = "'gdf'(GeoDataFrame)のCRSが定義されていません。"
+            logger.error(msg)
+            raise ValueError(msg)
         elif gdf.crs.to_epsg() != 4326:
             logger.warning(
                 "'gdf'(GeoDataFrame)のCRSがEPSG:4326ではありません。"
@@ -733,6 +754,9 @@ class Kmz(object):
     """
 
     def __init__(self, name: str, document_list: list[fastkml.Document]):
+        logger.debug(
+            f"Starting Kmz.__init__ with name: {name} and document_list: {document_list}"
+        )
         self.name = name
         self.document_list = document_list
         # 複数のDocument要素をFolder要素にまとめて'KMZ'の元となる'doc.kml'を作成する
@@ -741,23 +765,29 @@ class Kmz(object):
             name=self.name,
             atom_link=fastkml.AtomLink(href=ATOM_LINK_HREF),
         )
+        logger.debug("Creating screen overlay.")
         screen_overlay = self.create_screen_overlay()
         folder.append(screen_overlay)
+
+        logger.debug("Appending documents to kmz folder.")
         for doc in self.document_list:
             if not isinstance(doc, fastkml.Document):
-                raise ValueError(
-                    "`document_list`の要素はすべてfastkml.Documentのインスタンスでなければなりません。"
-                )
+                msg = f"`document_list`の要素 '{doc}' はfastkml.Documentのインスタンスではありません。"
+                logger.error(msg)
+                raise ValueError(msg)
             folder.append(doc)
         self.kml.append(folder)
+
         # 'doc.kml'を一時ファイルに保存する
         with tempfile.NamedTemporaryFile(delete=False, suffix=".kml") as tmp_file:
+            logger.debug(f"Writing KML to temporary file: {tmp_file.name}")
             raw_xml = self.kml.to_string(prettyprint=True)
             pretty_kml = minidom.parseString(raw_xml.encode("utf-8"))
             tmp_file.write(pretty_kml.toprettyxml(indent="  ").encode("utf-8"))
             self.kml_path = tmp_file.name
 
         # 'doc.kml'とオーバーレイ画像を含むKMZファイルを作成する
+        logger.info("Creating KMZ file and zipping contents to temporary file.")
         with tempfile.NamedTemporaryFile(delete=False, suffix=".kmz") as tmp_kmz:
             with zipfile.ZipFile(tmp_kmz, mode="w") as zf:
                 zf.write(self.kml_path, arcname="doc.kml")
@@ -767,10 +797,13 @@ class Kmz(object):
                 )
                 logger.info(f"KMZファイルを作成しました: {tmp_kmz.name}")
             self.kmz_path = tmp_kmz.name
+        logger.debug(f"KMZ file created at: {self.kmz_path}")
 
     def save(self, output_path: str):
         if not isinstance(output_path, str):
-            raise ValueError("output_pathは文字列で指定してください。")
+            msg = f"`output_path`の値 '{output_path}' は文字列ではありません。"
+            logger.error(msg)
+            raise ValueError(msg)
 
         output_dir = os.path.dirname(output_path)
         if output_dir:
@@ -781,9 +814,15 @@ class Kmz(object):
         shutil.copyfile(self.kmz_path, output_path)
         try:
             os.chmod(output_path, 0o644)
+            logger.info(
+                f"Saved KMZ file to '{output_path}' with permissions set to 644."
+            )
         except OSError:
+            msg = (
+                f"KMZファイル '{output_path}' のパーミッションを変更できませんでした。"
+            )
+            logger.warning(msg)
             pass
-        logger.info(f"KMZファイルを '{output_path}' として保存しました。")
 
     def delete_temp_file(self):
         for temp_path in (

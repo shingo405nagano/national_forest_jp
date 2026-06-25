@@ -57,7 +57,10 @@ from .keyhole import (
     OfficeKmlKwargs,
     SubAddressKmlKwargs,
 )
+from .logging_config import setup_logger
 from .utils import txt_normalizer
+
+logger = setup_logger(__name__)
 
 
 def convert_wareki_to_seireki(wareki: str) -> int:
@@ -143,9 +146,12 @@ class GsicAddressShape(GsShapeFile):
         Returns:
             指定した森林計画区の小班区画データを含む GeoDataFrame。
         """
+        logger.info(f"Generating GeoDataFrame for plan area: {plan_area}")
         addrs_cols = _AddrsColumns()
         # EsriShapefile を GeoDataFrame として読み込む
+        logger.debug(f"Reading shapefile for plan area: {plan_area}")
         gdf = self._read_file(plan_area=plan_area)
+        logger.debug("Start after processing GeoDataFrame.")
         # 樹立年度を西暦に変換する
         gdf["樹立年度"] = gdf["樹立年度"].apply(convert_wareki_to_seireki)
         # 更新年を記録
@@ -189,7 +195,11 @@ class GsicAddressShape(GsShapeFile):
         )
         # Geometry のバリデーションを行い、無効なジオメトリを修正する
         gdf["geometry"] = gdf["geometry"].apply(self.validate_geometry)  # type: ignore
-        return gdf[org_columns]  # 元の列順に戻す
+        gdf = gdf[org_columns]  # 元の列順に戻す
+        logger.info(
+            f"GeoDataFrame generated for plan area: {plan_area} with {len(gdf)} rows."
+        )
+        return gdf
 
     def __cast_geodataframe(self, gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
         """GeoDataFrame の属性を適切なデータ型に変換します。
@@ -313,6 +323,7 @@ class GsicAddressShape(GsShapeFile):
             - main_address(int | list[int]): 林班主番でフィルタリングします
             - city(str | list[str]): 市町村名でフィルタリングします
         """
+        logger.info("Executing query on GeoDataFrame with provided conditions.")
         self.__check_geodataframe(gdf)
         q = []
         if "plan_area" in kwargs:
@@ -328,7 +339,9 @@ class GsicAddressShape(GsShapeFile):
         if "city" in kwargs:
             q.append(self.__make_query_string("city", kwargs["city"]))
         query_string = " and ".join(q)
-        return gdf.query(query_string)
+        gdf = gdf.query(query_string)
+        logger.info(f"Query executed. Number of rows after filtering: {len(gdf)}")
+        return gdf
 
     def __make_query_string(self, column: str, value: str | int | list[Any]) -> str:
         """DataFrameのクエリ文字列を生成するための関数。SQLとは異なります。
@@ -357,6 +370,7 @@ class GsicAddressShape(GsShapeFile):
         Returns:
             なし。エラーがある場合は例外を発生させる。
         """
+        logger.debug("Checking GeoDataFrame columns and geometry type.")
         assert set(gdf.columns) == set(self.fields.use_default_en_fields())
         assert gdf["geometry"].dtype.name == "geometry"
 
@@ -378,38 +392,69 @@ class GsicAddressShape(GsShapeFile):
             gdf[col] = gdf[col].apply(coding.encode).astype(dtype)
             return gdf
 
+        logger.info("Encoding GeoDataFrame attributes based on coding definitions.")
         self.__check_geodataframe(gdf)
         gdf = gdf.copy()
         cols = _AddrsColumns()
+
+        logger.debug("Encoding `city` column using CityCoding.")
         city_coding = CityCoding()
         gdf = _encode(gdf, cols.city, city_coding, "int")
+
+        logger.debug("Encoding `authority` column using AuthorityCoding.")
         authority_coding = AuthorityCoding()
         gdf = _encode(gdf, cols.authority, authority_coding, "int")
+
+        logger.debug("Encoding `plan_area` column using PlanAreaCoding.")
         plan_area_coding = PlanAreaCoding()
         gdf = _encode(gdf, cols.plan_area, plan_area_coding, "int")
+
+        logger.debug("Encoding `office` column using OfficeCoding.")
         office_coding = OfficeCoding()
         gdf = _encode(gdf, cols.office, office_coding, "int")
+
+        logger.debug("Encoding `branch_office` column using BranchOfficeCoding.")
         branch_office_coding = BranchOfficeCoding()
         gdf = _encode(gdf, cols.branch_office, branch_office_coding, "int")
+
+        logger.debug("Encoding `locality` column using LocalityCoding.")
         locality_coding = LocalityCoding()
         gdf = _encode(gdf, cols.locality, locality_coding, "int")
+
+        logger.debug("Encoding tree name columns using TreeNameCoding.")
         tree_name_coding = TreeNameCoding()
         gdf = _encode(gdf, cols.tree_name_1, tree_name_coding, "int")
         gdf = _encode(gdf, cols.tree_name_2, tree_name_coding, "int")
         gdf = _encode(gdf, cols.tree_name_3, tree_name_coding, "int")
+
+        logger.debug(
+            "Encoding `forest_type_detail` column using ForestTypeDetailCoding."
+        )
         ftd_coding = ForestTypeDetailCoding()
         gdf = _encode(gdf, cols.forest_type_detail, ftd_coding, "int")
+
+        logger.debug(
+            "Encoding `forest_feature_type` column using ForestFeatureTypeCoding."
+        )
         fft_coding = ForestFeatureTypeCoding()
         gdf = _encode(gdf, cols.forest_feature_type, fft_coding, "int")
+
+        logger.debug("Encoding protection forest columns using ProtectedForestCoding.")
         protected_coding = ProtectedForestCoding()
         gdf = _encode(gdf, cols.protection_forest_1, protected_coding, "int")
         gdf = _encode(gdf, cols.protection_forest_2, protected_coding, "int")
         gdf = _encode(gdf, cols.protection_forest_3, protected_coding, "int")
         gdf = _encode(gdf, cols.protection_forest_4, protected_coding, "int")
+
+        logger.debug("Encoding `conservation` column using ConservationCoding.")
         conservation_coding = ConservationCoding()
         gdf = _encode(gdf, cols.conservation, conservation_coding, "int")
+
+        logger.debug("Encoding `green_corridor` column using GreenCorridorCoding.")
         green_corridor_coding = GreenCorridorCoding()
         gdf = _encode(gdf, cols.green_corridor, green_corridor_coding, "int")
+
+        logger.info("Encoding completed successfully.")
         return gdf
 
     def decode(self, gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
@@ -429,38 +474,68 @@ class GsicAddressShape(GsShapeFile):
             gdf[col] = gdf[col].apply(coding.decode).astype(dtype)
             return gdf
 
+        logger.info("Decoding GeoDataFrame attributes based on coding definitions.")
         self.__check_geodataframe(gdf)
         gdf = gdf.copy()
         cols = _AddrsColumns()
+        logger.debug("Decoding `city` column using CityCoding.")
         city_coding = CityCoding()
         gdf = _decode(gdf, cols.city, city_coding, "str")
+
+        logger.debug("Decoding `authority` column using AuthorityCoding.")
         authority_coding = AuthorityCoding()
         gdf = _decode(gdf, cols.authority, authority_coding, "str")
+
+        logger.debug("Decoding `plan_area` column using PlanAreaCoding.")
         plan_area_coding = PlanAreaCoding()
         gdf = _decode(gdf, cols.plan_area, plan_area_coding, "str")
+
+        logger.debug("Decoding `office` column using OfficeCoding.")
         office_coding = OfficeCoding()
         gdf = _decode(gdf, cols.office, office_coding, "str")
+
+        logger.debug("Decoding `branch_office` column using BranchOfficeCoding.")
         branch_office_coding = BranchOfficeCoding()
         gdf = _decode(gdf, cols.branch_office, branch_office_coding, "str")
+
+        logger.debug("Decoding `locality` column using LocalityCoding.")
         locality_coding = LocalityCoding()
         gdf = _decode(gdf, cols.locality, locality_coding, "str")
+
+        logger.debug("Decoding tree name columns using TreeNameCoding.")
         tree_name_coding = TreeNameCoding()
         gdf = _decode(gdf, cols.tree_name_1, tree_name_coding, "str")
         gdf = _decode(gdf, cols.tree_name_2, tree_name_coding, "str")
         gdf = _decode(gdf, cols.tree_name_3, tree_name_coding, "str")
+
+        logger.debug(
+            "Decoding `forest_type_detail` column using ForestTypeDetailCoding."
+        )
         ftd_coding = ForestTypeDetailCoding()
         gdf = _decode(gdf, cols.forest_type_detail, ftd_coding, "str")
+
+        logger.debug(
+            "Decoding `forest_feature_type` column using ForestFeatureTypeCoding."
+        )
         fft_coding = ForestFeatureTypeCoding()
         gdf = _decode(gdf, cols.forest_feature_type, fft_coding, "str")
+
+        logger.debug("Decoding protection forest columns using ProtectedForestCoding.")
         protected_coding = ProtectedForestCoding()
         gdf = _decode(gdf, cols.protection_forest_1, protected_coding, "str")
         gdf = _decode(gdf, cols.protection_forest_2, protected_coding, "str")
         gdf = _decode(gdf, cols.protection_forest_3, protected_coding, "str")
         gdf = _decode(gdf, cols.protection_forest_4, protected_coding, "str")
+
+        logger.debug("Decoding `conservation` column using ConservationCoding.")
         conservation_coding = ConservationCoding()
         gdf = _decode(gdf, cols.conservation, conservation_coding, "str")
+
+        logger.debug("Decoding `green_corridor` column using GreenCorridorCoding.")
         green_corridor_coding = GreenCorridorCoding()
         gdf = _decode(gdf, cols.green_corridor, green_corridor_coding, "str")
+
+        logger.info("Decoding completed successfully.")
         return gdf
 
     def field_and_alias(self) -> dict[str, str]:
@@ -483,6 +558,7 @@ class GsicAddressShape(GsShapeFile):
         Returns:
             森林管理署ごとにディゾルブされた GeoDataFrame。
         """
+        logger.debug("Dissolving GeoDataFrame by `Office` level.")
         office_fields = OfficeFields()
         self.__check_geodataframe(gdf)
         dissolved = gdf.dissolve(by=office_fields.dissolve_fields(), as_index=False)
@@ -497,6 +573,7 @@ class GsicAddressShape(GsShapeFile):
         Returns:
             担当区ごとにディゾルブされた GeoDataFrame。
         """
+        logger.debug("Dissolving GeoDataFrame by `Branch Office` level.")
         branch_office_fields = BranchOfficeFields()
         self.__check_geodataframe(gdf)
         dissolved = gdf.dissolve(
@@ -513,6 +590,7 @@ class GsicAddressShape(GsShapeFile):
         Returns:
             国有林の所在地ごとにディゾルブされた GeoDataFrame。
         """
+        logger.debug("Dissolving GeoDataFrame by `Locality` level.")
         locality_fields = LocalityFields()
         self.__check_geodataframe(gdf)
         dissolved = gdf.dissolve(by=locality_fields.dissolve_fields(), as_index=False)
@@ -527,6 +605,7 @@ class GsicAddressShape(GsShapeFile):
         Returns:
             林班ごとにディゾルブされた GeoDataFrame。
         """
+        logger.debug("Dissolving GeoDataFrame by `Main Address` level.")
         main_address_fields = MainAddressFields()
         self.__check_geodataframe(gdf)
         dissolved = gdf.dissolve(
@@ -567,6 +646,7 @@ class GsicAddressShape(GsShapeFile):
             ]
             return pf_rows
 
+        logger.debug("Dissolving GeoDataFrame by `Protection Forests` level.")
         pf_fields = ProtectedForestFields()
         self.__check_geodataframe(gdf)
         data = {}
@@ -627,21 +707,38 @@ class GsicAddressShape(GsShapeFile):
                 f.write(geojson_string)
             ```
         """
+        logger.info("Converting GeoDataFrame to GeoJSON.")
         if gdf.crs is None:
-            raise ValueError("GeoDataFrameのCRSが設定されていません。")
+            msg = "CRS is not set for the GeoDataFrame. Please set the CRS before calling this method."
+            logger.error(msg)
+            raise ValueError(msg)
         elif gdf.crs.to_epsg() != 4326:
+            logger.warning(
+                "CRS is not EPSG:4326. Converting to EPSG:4326 for GeoJSON output."
+            )
             gdf = gdf.to_crs(epsg=4326)
 
         gdfs = {"小班区画": gdf}
         if main_address:
+            logger.debug("Writing dissolved GeoDataFrame by `Main Address` level.")
             gdfs["林班区画"] = self.dissolve_by_main_address(gdf)
+
         if locality:
+            logger.debug("Writing dissolved GeoDataFrame by `Locality` level.")
             gdfs["国有林区画"] = self.dissolve_by_locality(gdf)
+
         if branch_office:
+            logger.debug("Writing dissolved GeoDataFrame by `Branch Office` level.")
             gdfs["森林事務所区画"] = self.dissolve_by_branch_office(gdf)
+
         if office:
+            logger.debug("Writing dissolved GeoDataFrame by `Office` level.")
             gdfs["森林管理署区画"] = self.dissolve_by_office(gdf)
+
         if protection_forests:
+            logger.debug(
+                "Writing dissolved GeoDataFrame by `Protection Forests` level."
+            )
             dissolved_dict = self.dissolve_by_protection_forests(gdf)
             gdfs.update(dissolved_dict)
 
@@ -652,6 +749,7 @@ class GsicAddressShape(GsShapeFile):
             gdfs = renamed_gdfs
 
         # GeoJSON形式の文字列に変換し、Zip圧縮されたバイトストリームとして返す
+        logger.debug("Creating a Zip file containing GeoJSON files.")
         memory_file = io.BytesIO()
         with zipfile.ZipFile(
             memory_file, mode="w", compression=zipfile.ZIP_DEFLATED
@@ -659,15 +757,18 @@ class GsicAddressShape(GsShapeFile):
             with tempfile.TemporaryDirectory() as tmp_dir:
                 tmp_path = Path(tmp_dir)
                 for name, gdf in gdfs.items():
+                    logger.debug(f"Writing GeoJSON for {name}.")
                     geojson_path = tmp_path / f"{name}.geojson"
                     gdf.to_file(geojson_path, driver="GeoJSON")
                     zf.write(geojson_path, arcname=f"{name}.geojson")
 
+            logger.debug("Writing attribute table as CSV.")
             zf.writestr(
                 "属性値のテーブル.csv",
                 _to_csv_bytes(gdf.drop(columns="geometry")),
             )
         memory_file.seek(0)
+        logger.info("GeoDataFrame successfully converted to Zip-compressed GeoJSON.")
         return memory_file
 
     def to_geopackage(
@@ -708,11 +809,19 @@ class GsicAddressShape(GsShapeFile):
         Returns:
             GeoPackageオブジェクト。
         """
+        logger.info("Converting GeoDataFrame to GeoPackage.")
         # CRSの確認
         if gdf.crs is None:
-            raise ValueError("GeoDataFrameのCRSが設定されていません。")
+            msg = "No CRS is set for the GeoDataFrame. Please set the CRS before calling this method."
+            logger.error(msg)
+            raise ValueError(msg)
         if gpkg is not None and not isinstance(gpkg, GeoPackage):
-            raise ValueError("gpkgはGeoPackageオブジェクトで指定してください。")
+            msg = (
+                "The provided `gpkg` argument is not an instance of the GeoPackage"
+                " class. Please provide a valid GeoPackage object."
+            )
+            logger.error(msg)
+            raise ValueError(msg)
 
         dissolve_requested = any(
             kwargs.get(key, False)
@@ -728,37 +837,55 @@ class GsicAddressShape(GsShapeFile):
         # `gdf`が小班区画レベルのGeoDataFrameかを確認
         sub_address_level = set(gdf.columns) == set(self.fields.use_default_en_fields())
         if dissolve_requested and not sub_address_level:
-            raise ValueError(
-                "ディゾルブする場合は、引数の`gdf`が小班区画レベルのGeoDataFrameである必要があります。"
+            msg = (
+                "The provided GeoDataFrame is not at the sub-address level. Dissolving"
+                " can only be performed on a GeoDataFrame that is at the sub-address le"
+                "vel. Please provide a valid sub-address level GeoDataFrame."
             )
+            logger.error(msg)
+            raise ValueError(msg)
 
         # `gpkg`が指定されている場合はそれを使用し、そうでない場合は出力形式に応じて内部で
         # GeoPackageオブジェクトを作成する
         if gpkg is not None:
+            logger.debug("Using the provided GeoPackage object.")
             gpkg.to_geopackage(gdf, layer=layer, alias=alias)
         else:
+            logger.debug("Creating a new GeoPackage object.")
             # GeoPackageオブジェクトに書き込む
             gpkg = GeoPackage(self.field_and_alias())
             gpkg.to_geopackage(gdf, layer=layer, alias=alias)
         # ディゾルブのオプションに応じて、指定されたカラムでディゾルブされたGeoDataFrameをGeoPackageに書き込む
         if kwargs.get("office", False):
+            logger.debug("Writing dissolved GeoDataFrame by `Office` level.")
             dissolved = self.dissolve_by_office(gdf)
             self.to_geopackage(dissolved, layer="office", alias=alias, gpkg=gpkg)
+
         if kwargs.get("branch_office", False):
+            logger.debug("Writing dissolved GeoDataFrame by `Branch Office` level.")
             dissolved = self.dissolve_by_branch_office(gdf)
             self.to_geopackage(dissolved, layer="branch_office", alias=alias, gpkg=gpkg)
+
         if kwargs.get("locality", False):
+            logger.debug("Writing dissolved GeoDataFrame by `Locality` level.")
             dissolved = self.dissolve_by_locality(gdf)
             self.to_geopackage(dissolved, layer="locality", alias=alias, gpkg=gpkg)
+
         if kwargs.get("main_address", False):
+            logger.debug("Writing dissolved GeoDataFrame by `Main Address` level.")
             dissolved = self.dissolve_by_main_address(gdf)
             self.to_geopackage(dissolved, layer="main_address", alias=alias, gpkg=gpkg)
+
         if kwargs.get("protection_forests", False):
+            logger.debug(
+                "Writing dissolved GeoDataFrame by `Protection Forests` level."
+            )
             dissolved_dict = self.dissolve_by_protection_forests(gdf)
             for pf, dissolved in dissolved_dict.items():
                 layer_name = f"protection_forest_{pf}"
                 self.to_geopackage(dissolved, layer=layer_name, alias=alias, gpkg=gpkg)
 
+        logger.info("GeoDataFrame has been successfully converted to GeoPackage.")
         return gpkg
 
     def to_kml_doc(self, kwargs: KmlKwargs) -> fastkml.Document:
@@ -788,15 +915,17 @@ class GsicAddressShape(GsShapeFile):
             ```
         """
         if not isinstance(kwargs, KmlKwargs):
-            raise ValueError("kwargsはKmlKwargsのインスタンスで指定してください。")
+            msg = f"kwargsの型がKmlKwargsではありません。型: {type(kwargs)}"
+            logger.error(msg)
+            raise ValueError(msg)
 
         # `kwargs.gdf`がこのクラスで生成されたGeoDataFrameかを確認するために、列名とgeometry列の型をチェックします。
         default_fields = self.fields.use_default_en_fields() + ["geometry"]
         for col in kwargs.gdf.columns:
             if col not in default_fields:
-                raise ValueError(
-                    f"kwargs.gdfの列名がこのクラスで生成されたGeoDataFrameの列名と一致しません。列名: {col}"
-                )
+                msg = f"kwargs.gdfの列名がこのクラスで生成されたGeoDataFrameの列名と一致しません。列名: {col}"
+                logger.error(msg)
+                raise ValueError(msg)
 
         keyhole = KeyholeMarkupLanguage()
 
@@ -892,28 +1021,35 @@ class GsicAddressShape(GsShapeFile):
             kmz.save("output.kmz")
             ```
         """
+        logger.info("Start converting GeoDataFrame to KMZ format.")
         self.__check_geodataframe(sub_addrs_gdf)
 
+        logger.debug("Creating KML documents for `SubAddress` level.")
         sub_addrs_kwargs = SubAddressKmlKwargs(gdf=sub_addrs_gdf)
         docs = [self.to_kml_doc(sub_addrs_kwargs)]
         if main_address:
+            logger.debug("Creating KML documents for `MainAddress` level.")
             main_address_gdf = self.dissolve_by_main_address(sub_addrs_gdf)
             main_address_kwargs = MainAddressKmlKwargs(gdf=main_address_gdf)
             docs.append(self.to_kml_doc(main_address_kwargs))
         if locality:
+            logger.debug("Creating KML documents for `Locality` level.")
             locality_gdf = self.dissolve_by_locality(sub_addrs_gdf)
             locality_kwargs = LocalityKmlKwargs(gdf=locality_gdf)
             docs.append(self.to_kml_doc(locality_kwargs))
         if branch_office:
+            logger.debug("Creating KML documents for `BranchOffice` level.")
             branch_office_gdf = self.dissolve_by_branch_office(sub_addrs_gdf)
             branch_office_kwargs = BranchOfficeKmlKwargs(gdf=branch_office_gdf)
             docs.append(self.to_kml_doc(branch_office_kwargs))
         if office:
+            logger.debug("Creating KML documents for `Office` level.")
             office_gdf = self.dissolve_by_office(sub_addrs_gdf)
             office_kwargs = OfficeKmlKwargs(gdf=office_gdf)
             docs.append(self.to_kml_doc(office_kwargs))
 
         kmz = Kmz(name=folder_name, document_list=docs)
+
         if return_memory_file:
             # KMZオブジェクトをメモリ上のファイルオブジェクトとして返す
             memory_file = io.BytesIO()
@@ -924,6 +1060,7 @@ class GsicAddressShape(GsShapeFile):
                 return memory_file
             finally:
                 kmz.delete_temp_file()
+        logger.info("KMZ conversion completed successfully.")
         return kmz
 
     def to_ziped_esri_shape_file(
@@ -965,6 +1102,9 @@ class GsicAddressShape(GsShapeFile):
                 f.write(zip_file.getvalue())
             ```
         """
+        logger.info(
+            "Start converting GeoDataFrame to ESRI Shapefile and compressing to Zip."
+        )
         self.__check_geodataframe(gdf)
         gdfs = {"小班区画": gdf}
 
@@ -979,6 +1119,9 @@ class GsicAddressShape(GsShapeFile):
             gdfs["森林管理署区画"] = self.dissolve_by_office(gdf)
 
         # 対応表の作成
+        logger.info(
+            "Creating field name correspondence table and attribute value table."
+        )
         rename = {}
         correction_list = []
         addrs_cols = AddressFields()
@@ -999,6 +1142,9 @@ class GsicAddressShape(GsShapeFile):
 
         # 属性値のテーブルを作成
         value_table = gdf.rename(columns=rename).drop(columns="geometry")
+        logger.info(
+            "Field name correspondence table and attribute value table created."
+        )
 
         def _to_csv_bytes(df: pd.DataFrame, encoding: str = "shift_jis") -> bytes:
             """Encode CSV content explicitly to avoid implicit UTF-8 conversion in ZipFile."""
@@ -1007,6 +1153,7 @@ class GsicAddressShape(GsShapeFile):
                 return csv_buffer.getvalue().encode(encoding)
 
         # Zipファイルに圧縮して返す
+        logger.info("Compressing Shapefile and CSV tables to Zip.")
         memory_file = io.BytesIO()
         with zipfile.ZipFile(
             memory_file, mode="w", compression=zipfile.ZIP_DEFLATED
@@ -1014,23 +1161,35 @@ class GsicAddressShape(GsShapeFile):
             with tempfile.TemporaryDirectory() as tmp_dir:
                 tmp_path = Path(tmp_dir)
                 for layer_name, layer_gdf in gdfs.items():
+                    logger.debug(f"Processing layer: {layer_name}")
                     # Shapefileを一時ディレクトリに出力し、関連ファイル一式をZipに追加
-                    shp_path = tmp_path / f"{layer_name}.shp"
-                    layer_gdf.to_file(
-                        shp_path,
-                        driver="ESRI Shapefile",
-                        encoding="utf-8",
-                    )
-                    for sidecar_path in sorted(tmp_path.glob(f"{layer_name}.*")):
-                        zf.write(sidecar_path, arcname=sidecar_path.name)
+                    try:
+                        shp_path = tmp_path / f"{layer_name}.shp"
+                        layer_gdf.to_file(
+                            shp_path,
+                            driver="ESRI Shapefile",
+                            encoding="utf-8",
+                        )
+                        for sidecar_path in sorted(tmp_path.glob(f"{layer_name}.*")):
+                            zf.write(sidecar_path, arcname=sidecar_path.name)
+                    except Exception as e:
+                        logger.error(f"Error processing layer {layer_name}: {e}")
+                        raise
 
             # 対応表をCSVファイルとしてZipファイルに追加
+            logger.debug(
+                "Adding correspondence table and attribute value table to Zip."
+            )
             zf.writestr("カラム名の対応表.csv", _to_csv_bytes(correction_table))
 
             # 属性値のテーブルをCSVファイルとしてZipファイルに追加
+            logger.debug("Adding attribute value table to Zip.")
             zf.writestr("属性値のテーブル.csv", _to_csv_bytes(value_table))
 
         memory_file.seek(0)
+        logger.info(
+            "GeoDataFrame successfully converted to ESRI Shapefile and compressed to Zip."
+        )
         return memory_file
 
     def to_ziped_dxf(
@@ -1091,11 +1250,15 @@ class GsicAddressShape(GsShapeFile):
             io.BytesIO:
                 変換されたDXFファイルの内容をバイト列として保持するメモリ上のファイルオブジェクト。
         """
+        logger.info(
+            "Start converting GeoDataFrame to DXF format and compressing to Zip."
+        )
         self.__check_geodataframe(gdf)
 
         # kwargsから各DXF設定オブジェクトを取得し、gdfs辞書に格納
         # 小班区画レベルのDXF設定オブジェクトを取得
         # DXFとして出力するデータを辞書に格納していく
+        logger.debug("Setting up DXF configuration objects for each level.")
         sub_addrs_label_size = kwargs.get(
             "sub_address_label_size", SubAddrsDxf().label_size
         )
@@ -1105,6 +1268,7 @@ class GsicAddressShape(GsShapeFile):
 
         # 林班主番レベルのDXF設定オブジェクトを取得
         if main_address:
+            logger.debug("Setting up DXF configuration for `MainAddress` level.")
             main_address_label_size = kwargs.get(
                 "main_address_label_size", MainAddrsDxf().label_size
             )
@@ -1116,6 +1280,7 @@ class GsicAddressShape(GsShapeFile):
 
         # 国有林レベルのDXF設定オブジェクトを取得
         if locality:
+            logger.debug("Setting up DXF configuration for `Locality` level.")
             locality_label_size = kwargs.get(
                 "locality_label_size", LocalityDxf().label_size
             )
@@ -1127,6 +1292,7 @@ class GsicAddressShape(GsShapeFile):
 
         # 森林事務所レベルのDXF設定オブジェクトを取得
         if branch_office:
+            logger.debug("Setting up DXF configuration for `BranchOffice` level.")
             branch_office_label_size = kwargs.get(
                 "branch_office_label_size", BranchOfficeDxf().label_size
             )
@@ -1138,6 +1304,7 @@ class GsicAddressShape(GsShapeFile):
 
         # 森林管理署レベルのDXF設定オブジェクトを取得
         if office:
+            logger.debug("Setting up DXF configuration for `Office` level.")
             office_label_size = kwargs.get("office_label_size", OfficeDxf().label_size)
             office_dxf = OfficeDxf(
                 gdf=self.dissolve_by_office(gdf),
@@ -1147,6 +1314,7 @@ class GsicAddressShape(GsShapeFile):
 
         # 保安林レベルのDXF設定オブジェクトを取得
         if protection_forests:
+            logger.debug("Setting up DXF configuration for `ProtectionForests` level.")
             protection_forest_label_size = kwargs.get(
                 "protection_forest_label_size", ProtectionForestDxf().label_size
             )
@@ -1156,7 +1324,9 @@ class GsicAddressShape(GsShapeFile):
                     label_size=protection_forest_label_size,
                 )
                 gdfs[f"保安林区画_{pf}"] = pfdxf
+        logger.debug("DXF configuration objects setup completed.")
 
+        logger.debug("Creating attribute value table for CSV output.")
         value_table = gdf.rename(columns=self.field_and_alias()).drop(
             columns="geometry"
         )
@@ -1164,8 +1334,10 @@ class GsicAddressShape(GsShapeFile):
         pf_coding = ProtectedForestCoding()
         pf_csv_txt = pf_coding.original_names()
         pf_table = pd.read_csv(io.StringIO(pf_csv_txt), encoding="shift_jis")
+        logger.debug("Attribute value table and code table created successfully.")
 
         # MemoryFileを作成して、Zip圧縮されたDXFファイルを格納する
+        logger.debug("Creating in-memory Zip file for DXF output.")
         memory_file = io.BytesIO()
         with zipfile.ZipFile(
             memory_file, mode="w", compression=zipfile.ZIP_DEFLATED
@@ -1174,22 +1346,32 @@ class GsicAddressShape(GsShapeFile):
                 tmp_path = Path(tmp_dir)
                 # 各DXF設定オブジェクトをDXFファイルとしてTempDirに保存
                 for layer_name, dxf_obj in gdfs.items():
-                    dxf_path = tmp_path / f"{layer_name}.dxf"
-                    doc = ezdxf.new(dxfversion=dxfversion, units=units, setup=True)  # type: ignore
+                    logger.debug(f"Processing layer: {layer_name}")
+                    try:
+                        dxf_path = tmp_path / f"{layer_name}.dxf"
+                        doc = ezdxf.new(dxfversion=dxfversion, units=units, setup=True)  # type: ignore
 
-                    # フォント設定
-                    if "JP" not in doc.styles:
-                        doc.styles.new("JP", dxfattribs={"font": "MS Gothic"})
+                        # フォント設定
+                        if "JP" not in doc.styles:
+                            doc.styles.new("JP", dxfattribs={"font": "MS Gothic"})
 
-                    msp = doc.modelspace()
-                    dxf_obj.add_geometries(msp)
-                    doc.saveas(dxf_path)
-                    zf.write(dxf_path, arcname=dxf_path.name)
+                        msp = doc.modelspace()
+                        dxf_obj.add_geometries(msp)
+                        doc.saveas(dxf_path)
+                        zf.write(dxf_path, arcname=dxf_path.name)
+                    except Exception as e:
+                        logger.error(f"Error processing layer {layer_name}: {e}")
+                        raise
 
             # 属性値のテーブルを作成
+            logger.debug("Writing attribute value table to Zip file.")
             zf.writestr("属性値のテーブル.csv", _to_csv_bytes(value_table))
             # 保安林のコード表を作成
+            logger.debug("Writing protected forest code table to Zip file.")
             zf.writestr("保安林のコード表.csv", _to_csv_bytes(pf_table))
 
         memory_file.seek(0)
+        logger.info(
+            "Finished converting GeoDataFrame to DXF format and compressing to Zip."
+        )
         return memory_file
