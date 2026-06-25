@@ -14,6 +14,7 @@ from .keyhole import (
     OfficeKmlKwargs,
     SubAddressKmlKwargs,
 )
+from .logging_config import get_log_stream, setup_logger
 
 __all__ = [
     "GsicAddressShape",
@@ -28,4 +29,6 @@ __all__ = [
     "LocalityKmlKwargs",
     "BranchOfficeKmlKwargs",
     "OfficeKmlKwargs",
+    "get_log_stream",
+    "setup_logger",
 ]

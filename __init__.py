@@ -16,6 +16,7 @@ try:
         OfficeKmlKwargs,
         SubAddressKmlKwargs,
     )
+    from nfj.logging_config import get_log_stream, setup_logger
 except ImportError:  # pragma: no cover
     from .nfj.dxf import (
         BranchOfficeDxf,
@@ -33,6 +34,7 @@ except ImportError:  # pragma: no cover
         OfficeKmlKwargs,
         SubAddressKmlKwargs,
     )
+    from .nfj.logging_config import get_log_stream, setup_logger
 
 __all__ = [
     "GsicAddressShape",
@@ -47,4 +49,6 @@ __all__ = [
     "LocalityKmlKwargs",
     "BranchOfficeKmlKwargs",
     "OfficeKmlKwargs",
+    "get_log_stream",
+    "setup_logger",
 ]

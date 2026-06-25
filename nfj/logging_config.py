@@ -1,9 +1,20 @@
 import logging
 import os
+from datetime import datetime, timedelta, timezone
 from logging.handlers import TimedRotatingFileHandler
 
 global LOG_FILE
 LOG_FILE = os.path.join(os.path.dirname(__file__), "app.log")
+
+
+class JSTFormatter(logging.Formatter):
+    """日本時間でログ時刻を出力するためのフォーマッタ。"""
+
+    def formatTime(self, record, datefmt=None):
+        dt = datetime.fromtimestamp(record.created, tz=timezone(timedelta(hours=9)))
+        if datefmt:
+            return dt.strftime(datefmt)
+        return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 
 def setup_logger(name="myapp"):
@@ -16,12 +27,12 @@ def setup_logger(name="myapp"):
         LOG_FILE, when="midnight", backupCount=7, encoding="utf-8"
     )
     file_handler.setLevel(logging.DEBUG)
-    file_handler.setFormatter(logging.Formatter(fmt))
+    file_handler.setFormatter(JSTFormatter(fmt))
 
     # --- コンソール（INFO 以上のみ） ---
     console_handler = logging.StreamHandler()
     console_handler.setLevel(logging.INFO)
-    console_handler.setFormatter(logging.Formatter(fmt))
+    console_handler.setFormatter(JSTFormatter(fmt))
 
     # --- 多重登録防止 ---
     if not logger.handlers:
