@@ -1,0 +1,13 @@
+certifi==2025.10.5
+geopandas==1.1.1
+numpy==2.3.3
+packaging==25.0
+pandas==2.3.3
+pyogrio==0.11.1
+pyproj==3.7.2
+python-dateutil==2.9.0.post0
+pytz==2025.2
+PyYAML==6.0.3
+shapely==2.1.2
+six==1.17.0
+tzdata==2025.2

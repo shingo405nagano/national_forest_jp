@@ -1,0 +1,62 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "geomesh"
+version = "0.1.0"
+authors = [
+    { name = "shingo405nagano", email = "atodekakuyo@gmail.com" }
+]
+description = "A Python library for generating and manipulating mesh grids used in GIS (Geographic Information Systems)"
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: GIS",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "geopandas>=0.10.0",
+    "shapely>=2.0.0",
+    "pyproj>=3.0.0",
+    "pyyaml>=5.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=22.0.0",
+    "flake8>=5.0.0",
+    "mypy>=0.990",
+]
+
+[project.urls]
+Homepage = "https://github.com/shingo405nagano/geomesh"
+Repository = "https://github.com/shingo405nagano/geomesh"
+Issues = "https://github.com/shingo405nagano/geomesh/issues"
+
+[tool.setuptools]
+packages = ["geomesh"]
+
+[tool.setuptools.package-data]
+geomesh = ["py.typed"]
+
+[tool.black]
+line-length = 88
+target-version = ['py38', 'py39', 'py310', 'py311']
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
