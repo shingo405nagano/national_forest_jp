@@ -1,0 +1,453 @@
+Metadata-Version: 2.4
+Name: geomesh
+Version: 0.1.0
+Summary: A Python library for generating and manipulating mesh grids used in GIS (Geographic Information Systems)
+Home-page: https://github.com/shingo405nagano/geo-mesh
+Author: shingo405nagano
+Author-email: shingo405nagano <your.email@example.com>
+Project-URL: Homepage, https://github.com/shingo405nagano/geo-mesh
+Project-URL: Repository, https://github.com/shingo405nagano/geo-mesh
+Project-URL: Issues, https://github.com/shingo405nagano/geo-mesh/issues
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: Science/Research
+Classifier: Topic :: Scientific/Engineering :: GIS
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: geopandas>=0.10.0
+Requires-Dist: shapely>=2.0.0
+Requires-Dist: pyproj>=3.0.0
+Requires-Dist: pyyaml>=5.0.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0.0; extra == "dev"
+Requires-Dist: pytest-cov>=4.0.0; extra == "dev"
+Requires-Dist: black>=22.0.0; extra == "dev"
+Requires-Dist: flake8>=5.0.0; extra == "dev"
+Requires-Dist: mypy>=0.990; extra == "dev"
+Dynamic: author
+Dynamic: home-page
+Dynamic: license-file
+Dynamic: requires-python
+
+# Geo-Mesh
+**Geo-Mesh**は、GIS（地理情報システム）で使用する、メッシュグリッドを生成・操作するためのPythonライブラリです。メッシュグリッドは特定の地域を隙間なく定量的に分割し、地理空間データの解析や可視化に役立ちます。
+
+ - **第1次地域区画** ... 日本全国の地域を偶数緯度及びその間隔（120分）を3等分した緯度における緯線並びに1度ごとの経線とによって分割してできる区域
+
+ - **第2次地域区画** ... 第1次地域区画を緯線方向及び経線方向に8等分してできる区域
+
+ - **基準地域メッシュ** ... 第2次地域区画を緯線方向及び経線方向に10等分してできる区域
+
+ - **2分の1地域メッシュ** ... 基準地域メッシュ（第3次地域区画）を緯線方向、経線方向に2等分してできる区域
+
+ - **4分の1地域メッシュ** ... 2分の1地域メッシュを緯線方向、経線方向に2等分してできる区域
+
+ - **Globalメッシュ** ... GISで使用される"タイル"の分割線として使用されるメッシュグリッド。ここでいうタイルは``slippy map tilenames``形式のタイルを指します。このメッシュはZoomLevel（ズームレベル）に基づいて分割され、ほぼ世界中をカバーします。
+
+
+## 1. 地域メッシュ（日本国内）
+
+### 1-1. 地域メッシュとは
+地域メッシュ統計とは、緯度・経度に基づき地域を隙間なく網の目（メッシュ）の区域に分けて、それぞれの区域に関する統計データを編成したものです。
+
+作成された地域メッシュ統計には次のような利点があります。
+
+ - 地域メッシュは、ほぼ同一の大きさ及び形状の区画を単位として区分されているので、地域メッシュ相互間の事象の計量的比較が容易です。
+ - 地域メッシュは、その位置や区画が固定されていることから、市町村などの行政区域の境域変更や地形、地物の変化による調査区の設定変更などの影響を受けることがなく、地域事象の時系列的比較が容易です。
+ - 地域メッシュのデータを合算することにより、任意の地域について必要なデータの入手が容易です。
+ - 地域メッシュは、緯度・経度に基づき区画されたほぼ正方形の形状であることから、位置の表示が明確で簡便にできるので、距離に関連した分析・計算・比較が容易です。
+
+<table border="1" cellpadding="3" cellspacing="0" class="datatable" width="650"> 
+       <caption> <strong>地域メッシュの区分方法</strong> 
+       </caption> 
+       <tbody> 
+        <tr align="center"> 
+         <th style="width: 200px;">区画の種類</th> 
+         <th style="width: 250px;">区分方法</th> 
+         <th style="width: 50px;">緯度の間隔</th> 
+         <th style="width: 50px;">経度の<br> 間隔</th> 
+         <th>一辺の長さ</th> 
+         <th style="width: 150px;">地図との関係</th> 
+        </tr> 
+        <tr> 
+         <td>第1次地域区画</td> 
+         <td>全国の地域を偶数緯度及びその間隔（120分）を3等分した緯度における緯線並びに1度ごとの経線とによって分割してできる区域</td> 
+         <td align="right">40分</td> 
+         <td align="right">1度</td> 
+         <td align="right">約80km</td> 
+         <td>20万分の1地勢図の1図葉の区画</td> 
+        </tr> 
+        <tr> 
+         <td>第2次地域区画<br> （統合地域メッシュ）</td> 
+         <td>第1次地域区画を緯線方向及び経線方向に8等分してできる区域</td> 
+         <td align="right">5分</td> 
+         <td align="right">7分<br> 30秒</td> 
+         <td align="right">約10km</td> 
+         <td>2万5千分の1地勢図の1図葉の区画</td> 
+        </tr> 
+        <tr> 
+         <td>基準地域メッシュ<br> （第3次地域区画）</td> 
+         <td>第2次地域区画を緯線方向及び経線方向に10等分してできる区域</td> 
+         <td align="right">30秒</td> 
+         <td align="right">45秒</td> 
+         <td align="right">約1km</td> 
+         <td>&nbsp;</td> 
+        </tr> 
+        <tr> 
+         <td>2分の1地域メッシュ<br> （分割地域メッシュ）</td> 
+         <td>基準地域メッシュ（第3次地域区画）を緯線方向、経線方向に2等分してできる区域</td> 
+         <td align="right">15秒</td> 
+         <td align="right">22.5秒</td> 
+         <td align="right">約500m</td> 
+         <td>&nbsp;</td> 
+        </tr> 
+        <tr> 
+         <td>4分の1地域メッシュ<br> （分割地域メッシュ）</td> 
+         <td>2分の1地域メッシュを緯線方向、経線方向に2等分してできる区域</td> 
+         <td align="right">7.5秒</td> 
+         <td align="right">11.25秒</td> 
+         <td align="right">約250m</td> 
+         <td>&nbsp;</td> 
+        </tr> 
+       </tbody> 
+      </table>
+
+※ 出典：総務省統計局「地域メッシュ統計について」 https://www.stat.go.jp/data/mesh/m_tuite.html
+
+※ 総務省統計局「地域メッシュ統計の特質・沿革」 https://www.stat.go.jp/data/mesh/pdf/gaiyo1.pdf
+
+※ 総務省統計局「地域メッシュ統計の作成」 https://www.stat.go.jp/data/mesh/pdf/gaiyo2.pdf
+
+
+### 1-2. 10進経緯度から地域メッシュコードを取得
+各メッシュコードは文字列として、インスタンス変数に格納されます。
+```python
+>>> import geomesh
+>>> lon = 140.467194155
+>>> lat = 40.596179690
+>>> mesh_jp = geomesh.jpmesh.MeshCodeJP(lon, lat)
+>>> print(mesh_jp)
+
+first_mesh_code: '6040'
+secandary_mesh_code: '604073'
+standard_mesh_code: '60407317'
+half_mesh_code: '604073173'
+quarter_mesh_code: '6040731732'
+```
+
+## 1-3. メッシュコードから区画の座標を取得
+
+メッシュコードは文字列として渡し、桁数に応じた区画の範囲が返されます。
+```python
+>>> mesh_code = ["6040", "604073", "60407317", "604073173", "6040731732"]
+>>> names = [
+....    "第1次地域区画",
+....    "第2次地域区画",
+....    "基準地域メッシュ",
+....    "2分の1地域メッシュ",
+....    "4分の1地域メッシュ",
+....  ]
+>>> for code, name in zip(mesh_code, names):
+....    mesh = geomesh.jpmesh.mesh_code_to_bounds(code)
+....    print(name, "\n", mesh, "\n")
+
+第1次地域区画 
+ Bounds(x_min=140.0, y_min=39.999999996, x_max=141.0, y_max=40.6666666626) 
+
+第2次地域区画 
+ Bounds(x_min=140.375, y_min=40.5833333331, x_max=140.5, y_max=40.6666666664) 
+
+基準地域メッシュ 
+ Bounds(x_min=140.4625, y_min=40.5916666666, x_max=140.475, y_max=40.5999999999) 
+
+2分の1地域メッシュ 
+ Bounds(x_min=140.4625, y_min=40.5958333332, x_max=140.46875, y_max=40.5999999998) 
+
+4分の1地域メッシュ 
+ Bounds(x_min=140.465625, y_min=40.5958333332, x_max=140.46875, y_max=40.5979166665) 
+```
+
+### 1-4. 範囲内の地域メッシュコードをGeoDataFrameで取得
+指定した経緯度範囲内の地域メッシュコードをGeoDataFrame形式で取得します。メッシュの種類は`mesh_name`引数で指定します。指定できるメッシュ名は以下の通りです。
+
+ - "1st" : 第1次地域区画
+ - "2nd" : 第2次地域区画
+ - "standard" : 基準地域メッシュ
+ - "half" : 2分の1地域メッシュ
+ - "quarter" : 4分の1地域メッシュ
+```python
+>>> import geomesh
+>>> lon_min, lat_min, lon_max, lat_max = (
+....    140.467194155,
+....    40.596179690,
+....    141.002244644,
+....    40.990309691,
+....)
+>>> mesh_gdf = geomesh.jpmesh.generate_jpmesh(
+....    lon_min, lat_min, lon_max, lat_max, mesh_name="standard"
+....)
+>>> print(mesh_gdf)
+     mesh_code                                           geometry
+0     60407317  POLYGON ((140.475 40.59167, 140.475 40.6, 140....
+1     60407327  POLYGON ((140.475 40.6, 140.475 40.60833, 140....
+2     60407337  POLYGON ((140.475 40.60833, 140.475 40.61667, ...
+3     60407347  POLYGON ((140.475 40.61667, 140.475 40.625, 14...
+4     60407357  POLYGON ((140.475 40.625, 140.475 40.63333, 14...
+...        ...                                                ...
+2107  61413040  POLYGON ((141.0125 40.95, 141.0125 40.95833, 1...
+2108  61413050  POLYGON ((141.0125 40.95833, 141.0125 40.96667...
+2109  61413060  POLYGON ((141.0125 40.96667, 141.0125 40.975, ...
+2110  61413070  POLYGON ((141.0125 40.975, 141.0125 40.98333, ...
+2111  61413080  POLYGON ((141.0125 40.98333, 141.0125 40.99167...
+```
+
+
+## 2. Globalメッシュ
+### 2-1. Globalメッシュとは
+Globalメッシュは、適当につけた名前ですが、GISで使用されるタイルの分割線として使用されるメッシュグリッドを指します。ここでいうタイルは``slippy map tilenames``形式のタイルを指します。このメッシュはZoomLevel（ズームレベル）に基づいて分割され、ほぼ世界中をカバーします。タイルの座標は、x（経度方向）およびy（緯度方向）、z（ズームレベル）で表されます。
+
+※ OpenStreetMap Wiki 「Slippy map tilenames」 https://wiki.openstreetmap.org/wiki/Slippy_map_tilenames
+
+
+### 2-2. 10進経緯度からタイル座標を取得
+経緯度からタイル座標（x, y）を取得します。
+```python
+>>> import geomesh
+>>> lon = 140.467194155
+>>> lat = 40.596179690
+>>> zl = 10
+>>> cds = geomesh.global_mesh.lonlat_to_tile_idx(
+....    lon, lat, zl, in_crs="EPSG:4326"
+.... )
+>>> print(cds)
+{'x': 911, 'y': 385}
+```
+
+### 2-3. 経緯度からタイルを構成する情報を取得
+経緯度からタイルの範囲や解像度などの情報を取得します。
+```python
+>>> import geomesh
+>>> lon = 140.467194155
+>>> lat = 40.596179690
+>>> zl = 10
+>>> res = geomesh.global_mesh.from_lonlat(lon, lat, zl)
+>>> print(res)
+type: <class 'geomesh.glmesh.TileDesign'>
+crs:
+  name: WGS 84 / Pseudo-Mercator
+  epsg: 3857
+  unit: metre
+XYZ:
+  x_idx: 911
+  y_idx: 385
+  zoom_level: 10
+bounds:
+  x_min: 15615167.0
+  y_min: 4970241.0
+  x_max: 15654303.0
+  y_max: 4931105.0
+resolution:
+  x_resolution [m/px]: 152.0
+  y_resolution [m/px]: -152.0
+```
+
+### 2-4. タイル座標からタイルを構成する情報を取得
+タイル座標（x, y, z）からタイルの範囲や解像度などの情報を取得します。
+```python
+>>> import geomesh
+>>> x_idx = 911
+>>> y_idx = 385
+>>> zl = 10
+>>> res = geomesh.global_mesh.from_tile_idx(x_idx, y_idx, zl)
+>>> print(res)
+type: <class 'geomesh.glmesh.TileDesign'>
+crs:
+  name: WGS 84 / Pseudo-Mercator
+  epsg: 3857
+  unit: metre
+XYZ:
+  x_idx: 911
+  y_idx: 385
+  zoom_level: 10
+bounds:
+  x_min: 15615167.0
+  y_min: 4970241.0
+  x_max: 15654303.0
+  y_max: 4931105.0
+resolution:
+  x_resolution [m/px]: 152.0
+  y_resolution [m/px]: -152.0
+```
+
+### 2-5. 範囲内のタイル分割メッシュ情報を取得
+戻り値はリストに格納されたTileDesignオブジェクトです。
+```python
+>>> lon_min, lat_min, lon_max, lat_max = (
+....    140.467194155,
+....    40.596179690,
+....    141.002244644,
+....    40.990309691,
+....)
+>>> zl = 14
+>>> res = geomesh.global_mesh.tiles(
+....    lon_min, lat_min, lon_max, lat_max, zl, in_crs="EPSG:4326"
+....)
+>>> print(type(res))
+>>> print(res[0])
+>>> print(res[-1])
+<class 'list'>
+
+type: <class 'geomesh.glmesh.TileDesign'>
+crs:
+  name: WGS 84 / Pseudo-Mercator
+  epsg: 3857
+  unit: metre
+XYZ:
+  x_idx: 14584
+  y_idx: 6143
+  zoom_level: 14
+bounds:
+  x_min: 15634735.0
+  y_min: 5011823.0
+  x_max: 15637181.0
+  y_max: 5009377.0
+resolution:
+  x_resolution [m/px]: 9.0
+  y_resolution [m/px]: -9.0
+
+type: <class 'geomesh.glmesh.TileDesign'>
+crs:
+  name: WGS 84 / Pseudo-Mercator
+  epsg: 3857
+  unit: metre
+XYZ:
+  x_idx: 14609
+  y_idx: 6167
+  zoom_level: 14
+bounds:
+  x_min: 15695885.0
+  y_min: 4953119.0
+  x_max: 15698331.0
+  y_max: 4950673.0
+resolution:
+  x_resolution [m/px]: 9.0
+  y_resolution [m/px]: -9.0
+```
+
+
+### 2-6. 範囲内のタイル分割メッシュ情報をGeoDataFrameで取得
+```python
+>>> import geomesh
+>>> lon_min, lat_min, lon_max, lat_max = (
+....    140.467194155,
+....    40.596179690,
+....    141.002244644,
+....    40.990309691,
+....)
+>>> zl = 14
+>>> gdf = geomesh.global_mesh.tiles(
+....    lon_min, lat_min, lon_max, lat_max, zl, in_crs="EPSG:4326", geodataframe=True
+....)
+>>> print(gdf)
+     zoom_level  x_idx  y_idx  x_resolution  y_resolution                                           geometry            zxy
+0            14  14584   6143           9.0          -9.0  POLYGON ((15637181 5011823, 15637181 5009377, ...  14/14584/6143
+1            14  14584   6144           9.0          -9.0  POLYGON ((15637181 5009377, 15637181 5006931, ...  14/14584/6144
+2            14  14584   6145           9.0          -9.0  POLYGON ((15637181 5006931, 15637181 5004485, ...  14/14584/6145
+3            14  14584   6146           9.0          -9.0  POLYGON ((15637181 5004485, 15637181 5002039, ...  14/14584/6146
+4            14  14584   6147           9.0          -9.0  POLYGON ((15637181 5002039, 15637181 4999593, ...  14/14584/6147
+..          ...    ...    ...           ...           ...                                                ...            ...
+645          14  14609   6163           9.0          -9.0  POLYGON ((15698331 4962903, 15698331 4960457, ...  14/14609/6163
+646          14  14609   6164           9.0          -9.0  POLYGON ((15698331 4960457, 15698331 4958011, ...  14/14609/6164
+647          14  14609   6165           9.0          -9.0  POLYGON ((15698331 4958011, 15698331 4955565, ...  14/14609/6165
+648          14  14609   6166           9.0          -9.0  POLYGON ((15698331 4955565, 15698331 4953119, ...  14/14609/6166
+649          14  14609   6167           9.0          -9.0  POLYGON ((15698331 4953119, 15698331 4950673, ...  14/14609/6167
+
+[650 rows x 7 columns]
+```
+
+### 2-7. 範囲内のxyzタイルを取得するURLのリストを作成する。
+```python
+>>> import geomesh
+>>> lon_min, lat_min, lon_max, lat_max = (
+....    140.467194155,
+....    40.596179690,
+....    141.002244644,
+....    40.990309691,
+....)
+>>> zl = 14
+>>> tile_infos = geomesh.global_mesh.tiles(
+....    lon_min, lat_min, lon_max, lat_max, zl, in_crs="EPSG:4326"
+....)
+>>> url = "https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png"
+>>> urls = [url.format(**info.zxy) for info in tile_infos]
+>>> print(urls[0])
+https://cyberjapandata.gsi.go.jp/xyz/std/14/14584/6143.png
+```
+
+## 3. 四角形のメッシュ
+指定した面積や辺の長さに基づいて、四角形のメッシュグリッドを生成・操作するための機能を提供します。
+### 3-1. インスタンス化
+インスタンス化する際に渡した範囲に基づいてメッシュを生成する範囲と単位を決定します。面積や長さをヘクタールやキロメートルなどの単位で使用したい場合は、平面直角座標系などの単位がメートルの座標参照系（CRS）を使用してください。
+```python
+>>> import geomesh
+>>> lon_min, lat_min, lon_max, lat_max = (
+....    140.467194155,
+....    40.596179690,
+....    141.002244644,
+....    40.990309691,
+....)
+>>> sq_mesh = geomesh.SquareMesh(lon_min, lat_min, lon_max, lat_max)
+```
+
+### 3-2. 面積を指定してメッシュを生成
+
+```python
+>>> gdf = square_mesh.generate_squares_from_area(0.001)
+>>> gdf = gdf.set_crs(epsg=4326)
+>>> print(f"area: {gdf.geometry.iloc[0].area}")
+>>> print(gdf)
+area: 0.0009999999998941192
+      id     xy                                           geometry
+0      0    0/0  POLYGON ((140.50008 40.99812, 140.50008 41.029...
+1      1    1/0  POLYGON ((140.5317 40.99812, 140.5317 41.02974...
+2      2    2/0  POLYGON ((140.56332 40.99812, 140.56332 41.029...
+3      3    3/0  POLYGON ((140.59494 40.99812, 140.59494 41.029...
+4      4    4/0  POLYGON ((140.62657 40.99812, 140.62657 41.029...
+..   ...    ...                                                ...
+216  216  12/12  POLYGON ((140.87955 40.61865, 140.87955 40.650...
+217  217  13/12  POLYGON ((140.91117 40.61865, 140.91117 40.650...
+218  218  14/12  POLYGON ((140.94279 40.61865, 140.94279 40.650...
+219  219  15/12  POLYGON ((140.97442 40.61865, 140.97442 40.650...
+220  220  16/12  POLYGON ((141.00604 40.61865, 141.00604 40.650...
+```
+
+### 3-3. 辺の長さを指定してメッシュを生成
+辺の長さは縦横で別々に指定できます。
+```python
+>>> gdf = square_mesh.generate_squares_from_length(horizontal=0.001, vertical=0.0015)
+>>> gdf = gdf.set_crs(epsg=4326)
+>>> print(f"length x: {gdf.geometry.iloc[0].area}")
+>>> print(gdf)
+area: 1.500000000007219e-06
+            id       xy                                           geometry
+0            0      0/0  POLYGON ((140.46945 41.02824, 140.46945 41.029...
+1            1      1/0  POLYGON ((140.47045 41.02824, 140.47045 41.029...
+2            2      2/0  POLYGON ((140.47145 41.02824, 140.47145 41.029...
+3            3      3/0  POLYGON ((140.47245 41.02824, 140.47245 41.029...
+4            4      4/0  POLYGON ((140.47345 41.02824, 140.47345 41.029...
+...        ...      ...                                                ...
+140963  140963  531/262  POLYGON ((141.00045 40.63524, 141.00045 40.636...
+140964  140964  532/262  POLYGON ((141.00145 40.63524, 141.00145 40.636...
+140965  140965  533/262  POLYGON ((141.00245 40.63524, 141.00245 40.636...
+140966  140966  534/262  POLYGON ((141.00345 40.63524, 141.00345 40.636...
+140967  140967  535/262  POLYGON ((141.00445 40.63524, 141.00445 40.636...                             geometry
+[140968 rows x 3 columns]
+```
