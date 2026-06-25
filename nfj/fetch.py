@@ -159,11 +159,13 @@ class GsShapeFile(object):
             ValueError: ダウンロードに失敗した場合。
         """
         try:
-            response = requests.get(self.url, timeout=120)
+            timeout = 600  # タイムアウトを10分に設定
+            response = requests.get(self.url, timeout=timeout)
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
             raise ValueError(
                 f"URL '{self.url}' からデータをダウンロードできませんでした。エラー: {e}"
+                f"タイムアウト({timeout}秒)やネットワークの問題が原因である可能性があります。"
             )
 
         zip_buffer = io.BytesIO(response.content)
