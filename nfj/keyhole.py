@@ -695,7 +695,9 @@ class KeyholeMarkupLanguage(object):
         """
         # KMLはCRSがWGS84（EPSG:4326）である必要があるため、ジオメトリ列をEPSG:4326に変換する
         gdf = self._check_crs(gdf)
-        gdf.geometry = [geom.point_on_surface() for geom in gdf.geometry]
+        label_geometries = [geom.point_on_surface() for geom in gdf.geometry]
+        label_gdf = gdf.copy()
+        label_gdf.geometry = label_geometries
 
         folder = fastkml.Folder(name=folder_name if folder_name else "国有林データ")
         # スタイルの作成と追加
@@ -711,7 +713,7 @@ class KeyholeMarkupLanguage(object):
         style_url = fastkml.StyleUrl(url=f"#{style_url}")
         folder.styles.append(style)
         # GeoDataFrameの各行をPlacemark要素に変換してFolderに追加
-        for idx, row in gdf.iterrows():
+        for idx, row in label_gdf.iterrows():
             geom_elem = self.geometry_element(geometry=row[geometry_column])
             row_data = row.drop(geometry_column)
             if name_column and name_column in row_data:
