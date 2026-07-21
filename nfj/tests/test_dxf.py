@@ -1,3 +1,5 @@
+from importlib.resources import files
+
 import ezdxf
 import geopandas as gpd
 import pytest
@@ -36,6 +38,12 @@ def _build_subaddr_gdf(*, protection_values=None, geometry=None):
             data[col] = ["-"]
 
     return gpd.GeoDataFrame(data, geometry="geometry", crs="EPSG:6678")
+
+
+def test_font_resource_exists_inside_package():
+    font_path = files("nfj").joinpath("others", "msgothic.ttc")
+
+    assert font_path.is_file()
 
 
 def test_base_dxf_add_geometries_raises_when_label_column_missing():

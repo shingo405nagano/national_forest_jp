@@ -1,4 +1,4 @@
-import os
+from importlib import resources
 from typing import Any, Optional
 
 import geopandas as gpd
@@ -15,9 +15,17 @@ from .logging_config import setup_logger
 logger = setup_logger(__name__)
 
 global windows_font_path
-windows_font_path = os.path.join(
-    os.path.dirname(__file__), "..", "others", "msgothic.ttc"
-)
+windows_font_path = None
+
+
+def _resolve_font_path() -> str:
+    resource = resources.files("nfj").joinpath("others", "msgothic.ttc")
+    if not resource.is_file():
+        raise FileNotFoundError(f"Font resource not found: {resource}")
+    return str(resource)
+
+
+windows_font_path = _resolve_font_path()
 
 
 def split_sub_address_name(sub_address_name: str) -> dict[str, Optional[str]]:
@@ -105,6 +113,7 @@ def draw_labels(
     y: float,
     main_label: str,
     label_size: float,
+    label_rotation: float = 0.0,
     main_addrs_number_scale: float = 0.5,
     sub_labels: Optional[list[str]] = None,
     sub_label_scale: float = 0.5,
@@ -147,6 +156,7 @@ def draw_labels(
     if kana:
         t = msp.add_text(
             kana,
+            rotation=label_rotation,
             dxfattribs={
                 "height": label_size,
                 "style": jp_font_style_name,
@@ -161,6 +171,7 @@ def draw_labels(
     if number is not None:
         t = msp.add_text(
             number,
+            rotation=label_rotation,
             dxfattribs={
                 "height": main_addrs_number_size,
                 "style": jp_font_style_name,
@@ -182,6 +193,7 @@ def draw_labels(
     for s in sub_labels:
         t = msp.add_text(
             s,
+            rotation=label_rotation,
             dxfattribs={
                 "height": sub_label_size,
                 "style": jp_font_style_name,
@@ -229,6 +241,7 @@ class BaseDxf(pydantic.BaseModel):
     geometry_layer: str = "小班区画レイヤー"
     label_column: Optional[str] = "sub_address_name"
     label_size: int = 20
+    label_rotation: float = 0.0
     label_layer: str = "小班区画ラベルレイヤー"
     model_config = pydantic.ConfigDict(
         validate_default=True,
@@ -279,7 +292,9 @@ class BaseDxf(pydantic.BaseModel):
             # ラベルがある場合、Polygonと交差する点を取得してテキストを追加
             centroid = shapely.point_on_surface(geom)
             modelspace.add_text(
-                label, dxfattribs=self.label_dxf_attributes()
+                label,
+                dxfattribs=self.label_dxf_attributes(),
+                rotation=self.label_rotation,
             ).set_placement((centroid.x, centroid.y))
         # Polygonに内周がある場合、内周の座標もDXFのLWPolylineとして追加
         if geom.interiors:
@@ -414,6 +429,7 @@ class SubAddrsDxf(BaseDxf):
                 main_label=label,
                 sub_labels=marks,
                 label_size=self.label_size,
+                label_rotation=self.label_rotation,
             )
 
     def protection_marks(self) -> Optional[dict[int, Optional[list[str]]]]:

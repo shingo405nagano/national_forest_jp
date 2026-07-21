@@ -859,22 +859,22 @@ class GsicAddressShape(GsShapeFile):
         if kwargs.get("office", False):
             logger.debug("Writing dissolved GeoDataFrame by `Office` level.")
             dissolved = self.dissolve_by_office(gdf)
-            self.to_geopackage(dissolved, layer="office", alias=alias, gpkg=gpkg)
+            self.to_geopackage(dissolved, layer="森林管理署", alias=alias, gpkg=gpkg)
 
         if kwargs.get("branch_office", False):
             logger.debug("Writing dissolved GeoDataFrame by `Branch Office` level.")
             dissolved = self.dissolve_by_branch_office(gdf)
-            self.to_geopackage(dissolved, layer="branch_office", alias=alias, gpkg=gpkg)
+            self.to_geopackage(dissolved, layer="森林事務所", alias=alias, gpkg=gpkg)
 
         if kwargs.get("locality", False):
             logger.debug("Writing dissolved GeoDataFrame by `Locality` level.")
             dissolved = self.dissolve_by_locality(gdf)
-            self.to_geopackage(dissolved, layer="locality", alias=alias, gpkg=gpkg)
+            self.to_geopackage(dissolved, layer="国有林", alias=alias, gpkg=gpkg)
 
         if kwargs.get("main_address", False):
             logger.debug("Writing dissolved GeoDataFrame by `Main Address` level.")
             dissolved = self.dissolve_by_main_address(gdf)
-            self.to_geopackage(dissolved, layer="main_address", alias=alias, gpkg=gpkg)
+            self.to_geopackage(dissolved, layer="林班主番", alias=alias, gpkg=gpkg)
 
         if kwargs.get("protection_forests", False):
             logger.debug(
@@ -882,7 +882,7 @@ class GsicAddressShape(GsShapeFile):
             )
             dissolved_dict = self.dissolve_by_protection_forests(gdf)
             for pf, dissolved in dissolved_dict.items():
-                layer_name = f"protection_forest_{pf}"
+                layer_name = f"保安林_{pf}"
                 self.to_geopackage(dissolved, layer=layer_name, alias=alias, gpkg=gpkg)
 
         logger.info("GeoDataFrame has been successfully converted to GeoPackage.")
@@ -1197,6 +1197,8 @@ class GsicAddressShape(GsShapeFile):
         gdf: gpd.GeoDataFrame,
         dxfversion: str = "R2010",
         units: InsertUnits = InsertUnits.Meters,
+        label_scale: float = 1.0,
+        label_rotation: float = 0.0,
         main_address: bool = True,
         locality: bool = False,
         branch_office: bool = False,
@@ -1212,6 +1214,14 @@ class GsicAddressShape(GsShapeFile):
             gdf(gpd.GeoDataFrame):
                 DXF形式に変換する対象のGeoDataFrame。小班区画レベルのGeoDataFrameである
                 必要があります。それ以外のGeoDataFrameを渡すとエラーになります。
+            dxfversion(str, optional):
+                DXFのバージョンを指定します。デフォルトは ``R2010`` です。
+            units(InsertUnits, optional):
+                DXFの単位を指定します。デフォルトは ``InsertUnits.Meters`` です。
+            label_scale(float, optional):
+                ラベルのスケールを指定します。デフォルトは ``1.0`` です。
+            label_rotation(float, optional):
+                ラベルの回転角度を指定します。デフォルトは ``0.0`` です。
             main_address(bool, optional):
                 林班主番でディゾルブして保存するかどうかを指定します。デフォルトは ``True`` です。
             locality(bool, optional):
@@ -1260,9 +1270,11 @@ class GsicAddressShape(GsShapeFile):
         # DXFとして出力するデータを辞書に格納していく
         logger.debug("Setting up DXF configuration objects for each level.")
         sub_addrs_label_size = kwargs.get(
-            "sub_address_label_size", SubAddrsDxf().label_size
+            "sub_address_label_size", SubAddrsDxf().label_size * label_scale
         )
-        sub_addrs_dxf = SubAddrsDxf(gdf=gdf, label_size=sub_addrs_label_size)
+        sub_addrs_dxf = SubAddrsDxf(
+            gdf=gdf, label_size=sub_addrs_label_size, label_rotation=label_rotation
+        )
 
         gdfs: dict[str, Any] = {"小班区画": sub_addrs_dxf}
 
@@ -1270,11 +1282,12 @@ class GsicAddressShape(GsShapeFile):
         if main_address:
             logger.debug("Setting up DXF configuration for `MainAddress` level.")
             main_address_label_size = kwargs.get(
-                "main_address_label_size", MainAddrsDxf().label_size
+                "main_address_label_size", MainAddrsDxf().label_size * label_scale
             )
             main_address_dxf = MainAddrsDxf(
                 gdf=self.dissolve_by_main_address(gdf),
                 label_size=main_address_label_size,
+                label_rotation=label_rotation,
             )
             gdfs["林班区画"] = main_address_dxf
 
@@ -1282,11 +1295,12 @@ class GsicAddressShape(GsShapeFile):
         if locality:
             logger.debug("Setting up DXF configuration for `Locality` level.")
             locality_label_size = kwargs.get(
-                "locality_label_size", LocalityDxf().label_size
+                "locality_label_size", LocalityDxf().label_size * label_scale
             )
             locality_dxf = LocalityDxf(
                 gdf=self.dissolve_by_locality(gdf),
                 label_size=locality_label_size,
+                label_rotation=label_rotation,
             )
             gdfs["国有林区画"] = locality_dxf
 
@@ -1294,21 +1308,25 @@ class GsicAddressShape(GsShapeFile):
         if branch_office:
             logger.debug("Setting up DXF configuration for `BranchOffice` level.")
             branch_office_label_size = kwargs.get(
-                "branch_office_label_size", BranchOfficeDxf().label_size
+                "branch_office_label_size", BranchOfficeDxf().label_size * label_scale
             )
             branch_office_dxf = BranchOfficeDxf(
                 gdf=self.dissolve_by_branch_office(gdf),
                 label_size=branch_office_label_size,
+                label_rotation=label_rotation,
             )
             gdfs["森林事務所区画"] = branch_office_dxf
 
         # 森林管理署レベルのDXF設定オブジェクトを取得
         if office:
             logger.debug("Setting up DXF configuration for `Office` level.")
-            office_label_size = kwargs.get("office_label_size", OfficeDxf().label_size)
+            office_label_size = kwargs.get(
+                "office_label_size", OfficeDxf().label_size * label_scale
+            )
             office_dxf = OfficeDxf(
                 gdf=self.dissolve_by_office(gdf),
                 label_size=office_label_size,
+                label_rotation=label_rotation,
             )
             gdfs["森林管理署区画"] = office_dxf
 
@@ -1316,12 +1334,14 @@ class GsicAddressShape(GsShapeFile):
         if protection_forests:
             logger.debug("Setting up DXF configuration for `ProtectionForests` level.")
             protection_forest_label_size = kwargs.get(
-                "protection_forest_label_size", ProtectionForestDxf().label_size
+                "protection_forest_label_size",
+                ProtectionForestDxf().label_size * label_scale,
             )
             for pf, pf_gdf in self.dissolve_by_protection_forests(gdf).items():
                 pfdxf = ProtectionForestDxf(
                     gdf=pf_gdf,
                     label_size=protection_forest_label_size,
+                    label_rotation=label_rotation,
                 )
                 gdfs[f"保安林区画_{pf}"] = pfdxf
         logger.debug("DXF configuration objects setup completed.")

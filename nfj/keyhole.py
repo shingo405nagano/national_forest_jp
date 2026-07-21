@@ -2,6 +2,7 @@ import os
 import shutil
 import tempfile
 import zipfile
+from importlib import resources
 from typing import Any, Optional, cast
 from uuid import uuid4
 from xml.dom import minidom
@@ -21,9 +22,19 @@ from .logging_config import setup_logger
 logger = setup_logger(__name__)
 
 global OVERLAY_IMG
-OVERLAY_IMG = os.path.join(
-    os.path.dirname(__file__), ".confs", "google_earth_screen_overlay.png"
-)
+OVERLAY_IMG = None
+
+
+def _resolve_overlay_image_path() -> str:
+    resource = resources.files("nfj").joinpath(
+        ".confs", "google_earth_screen_overlay.png"
+    )
+    if not resource.is_file():
+        raise FileNotFoundError(f"Overlay image resource not found: {resource}")
+    return str(resource)
+
+
+OVERLAY_IMG = _resolve_overlay_image_path()
 global ATOM_LINK_HREF
 ATOM_LINK_HREF = "https://github.com/shingo405nagano/national_forest_jp.git"
 

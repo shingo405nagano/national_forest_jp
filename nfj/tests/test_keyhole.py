@@ -1,5 +1,6 @@
 import os
 import zipfile
+from importlib.resources import files
 
 import fastkml
 import geopandas as gpd
@@ -28,6 +29,12 @@ def _make_polygon_gdf(crs: str = "EPSG:4326"):
 
 def test_hex_to_abgr_converts_hex_and_alpha():
     assert hex_to_abgr("#112233", alpha=0.5) == "7f332211"
+
+
+def test_overlay_image_resource_exists_inside_package():
+    overlay_path = files("nfj").joinpath(".confs", "google_earth_screen_overlay.png")
+
+    assert overlay_path.is_file()
 
 
 def test_kmlkwargs_requires_crs():
