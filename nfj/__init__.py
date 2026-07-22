@@ -14,7 +14,7 @@ from .keyhole import (
     OfficeKmlKwargs,
     SubAddressKmlKwargs,
 )
-from .logging_config import get_log_stream, setup_logger
+from .logging_config import LOG_FILE, get_log_stream, setup_logger
 
 __all__ = [
     "GsicAddressShape",
@@ -32,3 +32,6 @@ __all__ = [
     "get_log_stream",
     "setup_logger",
 ]
+
+# Logファイルのパスを表示するためのコードを追加
+print(f"*** Log file path: {LOG_FILE} ***")

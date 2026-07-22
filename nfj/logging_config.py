@@ -1,10 +1,12 @@
 import logging
 import os
+import tempfile
 from datetime import datetime, timedelta, timezone
 from logging.handlers import TimedRotatingFileHandler
 
 global LOG_FILE
-LOG_FILE = os.path.join(os.path.dirname(__file__), "app.log")
+with tempfile.NamedTemporaryFile(delete=False, suffix=".log") as temp_log_file:
+    LOG_FILE = temp_log_file.name
 
 
 class JSTFormatter(logging.Formatter):
