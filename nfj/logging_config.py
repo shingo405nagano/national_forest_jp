@@ -4,9 +4,13 @@ import tempfile
 from datetime import datetime, timedelta, timezone
 from logging.handlers import TimedRotatingFileHandler
 
+# 書き込み権限を確認し、権限がない場合は一時ファイルを使用する
 global LOG_FILE
-with tempfile.NamedTemporaryFile(delete=False, suffix=".log") as temp_log_file:
-    LOG_FILE = temp_log_file.name
+if os.access(os.path.dirname(__file__), os.W_OK):
+    LOG_FILE = os.path.join(os.path.dirname(__file__), "nfj.log")
+else:
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".log") as temp_log_file:
+        LOG_FILE = temp_log_file.name
 
 
 class JSTFormatter(logging.Formatter):
