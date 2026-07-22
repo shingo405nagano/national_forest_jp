@@ -1070,6 +1070,7 @@ class GsicAddressShape(GsShapeFile):
         locality: bool = False,
         branch_office: bool = False,
         office: bool = False,
+        encoding: str = "utf-8",
     ) -> io.BytesIO:
         """
         小班区画のGeoDataFrameをESRI Shapefile形式に変換し、Zipファイルとして圧縮後、
@@ -1168,7 +1169,7 @@ class GsicAddressShape(GsShapeFile):
                         layer_gdf.to_file(
                             shp_path,
                             driver="ESRI Shapefile",
-                            encoding="utf-8",
+                            encoding=encoding,
                         )
                         for sidecar_path in sorted(tmp_path.glob(f"{layer_name}.*")):
                             zf.write(sidecar_path, arcname=sidecar_path.name)
