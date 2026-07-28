@@ -38,7 +38,7 @@ if __name__ == "__main__":
         # ファイルのバイナリデータとして取得します。main_address=True, locality=Trueと
         # する事で、それぞれのShapefileを構成します。
         memory_file = shp.to_ziped_esri_shape_file(
-            gdf, main_address=True, locality=True
+            gdf, main_address=True, locality=True, encoding="Shift_JIS", alias=True
         )
         # 取得したバイナリデータをZipファイルとして保存します。
         output_path.write_bytes(memory_file.getvalue())
