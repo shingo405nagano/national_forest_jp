@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "national_forest_jp"
-version = "0.2.0"
-description = "国有林野データを取得・整形する Python ライブラリ"
+version = "0.2.1"
+description = "国有林データをG空間センターから取得し、加工するためのレポジトリ"
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.13"

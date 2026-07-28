@@ -1071,6 +1071,7 @@ class GsicAddressShape(GsShapeFile):
         branch_office: bool = False,
         office: bool = False,
         encoding: str = "utf-8",
+        alias: bool = False,
     ) -> io.BytesIO:
         """
         小班区画のGeoDataFrameをESRI Shapefile形式に変換し、Zipファイルとして圧縮後、
@@ -1090,6 +1091,11 @@ class GsicAddressShape(GsShapeFile):
                 担当区でディゾルブして保存するかどうかを指定します。デフォルトは ``False`` です。
             office(bool, optional):
                 森林管理署でディゾルブして保存するかどうかを指定します。デフォルトは ``False`` です。
+            encoding(str, optional):
+                Shapefileの文字コードを指定します。デフォルトは ``utf-8`` です。
+            alias(bool):
+                属性名に日本語を使用する場合は ``True`` に設定します。``True``の場合は、
+                `encoding="Shift_JIS"` を指定することを推奨します。
          Returns:
             io.BytesIO:
                 変換されたShapefileを含むZipファイルの内容をバイト列として保持するメモリ上のファイルオブジェクト。
@@ -1107,17 +1113,26 @@ class GsicAddressShape(GsShapeFile):
             "Start converting GeoDataFrame to ESRI Shapefile and compressing to Zip."
         )
         self.__check_geodataframe(gdf)
-        gdfs = {"小班区画": gdf}
+        _gdf = gdf.copy().rename(columns=self.field_and_alias()) if alias else gdf
+        gdfs = {"小班区画": _gdf}
 
         # ディゾルブして保存する場合は、ディゾルブされたGeoDataFrameもgdfsに追加する
         if main_address:
-            gdfs["林班区画"] = self.dissolve_by_main_address(gdf)
+            _gdf = self.dissolve_by_main_address(gdf)
+            _gdf = _gdf.rename(columns=self.field_and_alias()) if alias else _gdf
+            gdfs["林班区画"] = _gdf
         if locality:
-            gdfs["国有林区画"] = self.dissolve_by_locality(gdf)
+            _gdf = self.dissolve_by_locality(gdf)
+            _gdf = _gdf.rename(columns=self.field_and_alias()) if alias else _gdf
+            gdfs["国有林区画"] = _gdf
         if branch_office:
-            gdfs["森林事務所区画"] = self.dissolve_by_branch_office(gdf)
+            _gdf = self.dissolve_by_branch_office(gdf)
+            _gdf = _gdf.rename(columns=self.field_and_alias()) if alias else _gdf
+            gdfs["森林事務所区画"] = _gdf
         if office:
-            gdfs["森林管理署区画"] = self.dissolve_by_office(gdf)
+            _gdf = self.dissolve_by_office(gdf)
+            _gdf = _gdf.rename(columns=self.field_and_alias()) if alias else _gdf
+            gdfs["森林管理署区画"] = _gdf
 
         # 対応表の作成
         logger.info(
