@@ -40,6 +40,7 @@ if __name__ == "__main__":
         dxf = shp.to_ziped_dxf(
             gdf,
             dxfversion="R2010",
+            label_rotation=0,
             main_address=True,
             locality=True,
             office=True,

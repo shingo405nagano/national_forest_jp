@@ -1199,7 +1199,7 @@ class GsicAddressShape(GsShapeFile):
         dxfversion: str = "R2010",
         units: InsertUnits = InsertUnits.Meters,
         label_scale: float = 1.0,
-        label_rotation: float = 0.0,
+        label_rotation: int = 0,
         main_address: bool = True,
         locality: bool = False,
         branch_office: bool = False,

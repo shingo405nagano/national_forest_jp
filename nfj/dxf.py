@@ -1,3 +1,5 @@
+import math
+from functools import lru_cache
 from importlib import resources
 from typing import Any, Optional
 
@@ -48,7 +50,7 @@ def split_sub_address_name(sub_address_name: str) -> dict[str, Optional[str]]:
     return {"kana": kana_part, "number": number_part if number_part else None}
 
 
-def compute_visual_offset(label, font_path, font_point_size, target_height):
+def _compute_visual_offset_uncached(label, font_path, font_point_size, target_height):
     """
     指定したフォントで描画したときの文字列の視覚的中心を計算し、DXF座標系に変換する関数
     Args:
@@ -76,19 +78,29 @@ def compute_visual_offset(label, font_path, font_point_size, target_height):
     draw_y = baseline_y - ascent
     draw.text((baseline_x, draw_y), label, font=font, fill=255)
 
-    bbox = img.getbbox()
-    if bbox is None:
+    # 文字の見た目の中心を、描画されたピクセルの重心として求める
+    pixels = img.load()
+    count = 0
+    sum_x = 0.0
+    sum_y = 0.0
+    for y in range(canvas_h):
+        for x in range(canvas_w):
+            if pixels[x, y] > 0:
+                count += 1
+                sum_x += x
+                sum_y += y
+
+    if count == 0:
         return 0.0, 0.0
-    x0, y0, x1, y1 = bbox
-    center_x_px = (x0 + x1) / 2.0
-    center_y_px = (y0 + y1) / 2.0
+
+    center_x_px = sum_x / count
+    center_y_px = sum_y / count
 
     # ベースライン原点に対する相対座標（Pillow の Y は下向き）
     rel_x_px = center_x_px - baseline_x
     rel_y_px = baseline_y - center_y_px
 
     # rendered height を ascent に基づいてスケール（より安定）
-    # ascent はフォントサイズ * scale に近い値なのでこれを使う
     rendered_ascent_px = ascent  # already scaled by 'scale'
     if rendered_ascent_px == 0:
         return 0.0, 0.0
@@ -97,124 +109,165 @@ def compute_visual_offset(label, font_path, font_point_size, target_height):
     offset_x_dxf = rel_x_px * scale_to_dxf
     offset_y_dxf = rel_y_px * scale_to_dxf
 
-    # 左サイドベアリング補正（経験的）
-    left_bearing_px = x0 - baseline_x
-    left_bearing_dxf = left_bearing_px * scale_to_dxf
-    # 右寄りに見えるなら左へ少し追加でずらす（符号は見た目で調整）
-    # 係数は環境依存なので小さめにしておく
-    offset_x_dxf += left_bearing_dxf * 0.7
-
     return offset_x_dxf, offset_y_dxf
 
 
-def draw_labels(
+@lru_cache(maxsize=2048)
+def compute_visual_offset(label, font_path, font_point_size, target_height):
+    return _compute_visual_offset_uncached(
+        label, font_path, font_point_size, target_height
+    )
+
+
+def _rotate_point(
+    x: float, y: float, center_x: float, center_y: float, angle_deg: float
+):
+    if abs(angle_deg) < 1e-12:
+        return x, y
+    angle_rad = math.radians(angle_deg)
+    dx = x - center_x
+    dy = y - center_y
+    return (
+        center_x + dx * math.cos(angle_rad) - dy * math.sin(angle_rad),
+        center_y + dx * math.sin(angle_rad) + dy * math.cos(angle_rad),
+    )
+
+
+def _add_text_entity(
+    msp, text: str, x: float, y: float, height: float, rotation: float = 0
+):
+    if not text:
+        return None
+    text_entity = msp.add_text(
+        text,
+        dxfattribs={
+            "height": height,
+            "rotation": rotation,
+            "style": "STANDARD",
+        },
+    )
+    try:
+        # Use centered placement when available
+        text_entity.set_pos((x, y), align="MIDDLE_CENTER")
+    except Exception:
+        # Fallback: set insert point
+        text_entity.dxf.insert = (x, y)
+    return text_entity
+
+
+def add_sub_address_label(
     msp,
     x: float,
     y: float,
-    main_label: str,
-    label_size: float,
-    label_rotation: float = 0.0,
-    main_addrs_number_scale: float = 0.5,
-    sub_labels: Optional[list[str]] = None,
-    sub_label_scale: float = 0.5,
-    radius_scale: float = 0.8,
-    jp_font_style_name: str = "JP",
-) -> None:
-    """
-    DXFに小班名とその下に円囲みで保安林の短縮コードを描画する関数
-    この関数では、日本語の場合中心を測る為に、Pillowを使って視覚的中心を計算し、DXF座標系に変
-    換して文字を配置する必要がある為、文字を'Ms Gothic'フォントで描画することを前提としています。
+    addrs_label: str,
+    addrs_label_size: float = 20,
+    rotation: float = 0,
+    number_label: str = "",
+    number_label_scale: float = 0.5,
+    protection_labels: list[str] | None = None,
+    protection_label_scale: float = 0.5,
+    font_path: str = windows_font_path,
+):
+    """DXFのモデル空間に林小班ラベルを追加する関数。
+
     Args:
-        msp: ezdxfのModelspaceオブジェクト
-        x (float): 描画する位置のX座標
-        y (float): 描画する位置のY座標
-        main_label (str): 小班名の文字列
-        sub_labels (list[str]): 保安林の短縮コードのリスト
-        label_size (float): 小班名の文字サイズ
-        main_addrs_number_scale (float): 小班枝番の文字サイズのスケール（小班名に対する比率）
-        sub_label_scale (float): 保安林の短縮コードの文字サイズのスケール（小班名に対する比率）
-        radius_scale (float): 円の半径のスケール（保安林の短縮コードの文字サイズに対する比率）
-    Returns:
-        None
+        msp: DXFのモデル空間オブジェクト。
+        x (float):
+            ラベルのX座標。
+        y (float):
+            ラベルのY座標。
+        addrs_label (str):
+            小班主番ラベル。
+            例：'い'、'ろ'、'は'、'イ' など
+        addrs_label_size (float, optional):
+            林小班ラベルのフォントサイズ。デフォルトは20
+        rotation (float, optional):
+            ラベル全体の回転角度（度単位）。デフォルトは0
+        number_label (str, optional):
+            小班枝番ラベルの文字列。デフォルトは空文字。このラベルは小班主番ラベルの右下に配置されます。
+            例：'1'、'2'、'3'、'10' など
+        number_label_scale (float, optional):
+            小班枝番ラベルのスケール。デフォルトは0.5。
+        protection_labels (list[str], optional):
+            保安林種のラベルのリスト。このラベルは小班主番ラベルの真下に配置されます。複数ある場合は、
+            左から右に配置されます。また、文字を囲むように円が描かれます。デフォルトは空リスト。
+            例：['水', '土', '崩'] など
+        protection_label_scale (float, optional):
+            保安林種ラベルのスケール。デフォルトは0.5。
     """
 
-    def text_width(h):
-        return h * 0.6
+    if protection_labels is None:
+        protection_labels = []
+    # main label
+    _add_text_entity(msp, addrs_label, x, y, addrs_label_size, rotation)
 
-    parts = split_sub_address_name(main_label)
-    kana = parts["kana"] or ""
-    number = parts["number"]  # None or str
-
-    cursor_x = x
-    cursor_y = y
-    label_spacing = label_size * 0.75  # 少し文字の間隔を空ける
-    main_addrs_number_size = label_size * main_addrs_number_scale
-    sub_label_size = label_size * sub_label_scale
-    radius = sub_label_size * radius_scale
-
-    # --- main_label: 小班主番部分 ---
-    if kana:
-        t = msp.add_text(
-            kana,
-            rotation=label_rotation,
+    # number (枝番): place to the right/top-right of the main label
+    if number_label:
+        number_local_x = addrs_label_size * 1.3
+        number_local_y = -addrs_label_size * 0.2
+        number_x, number_y = _rotate_point(
+            x + number_local_x,
+            y + number_local_y,
+            x,
+            y,
+            rotation,
+        )
+        num_ent = msp.add_text(
+            number_label,
             dxfattribs={
-                "height": label_size,
-                "style": jp_font_style_name,
-                "layer": "小班主番レイヤー",
+                "height": addrs_label_size * number_label_scale,
+                "rotation": rotation,
+                "style": "STANDARD",
             },
         )
-        t.set_placement((cursor_x, cursor_y), align=TextEntityAlignment.LEFT)
-        cursor_x += text_width(label_size) * len(kana)
+        try:
+            num_ent.set_pos((number_x, number_y), align="BOTTOM_RIGHT")
+        except Exception:
+            num_ent.dxf.insert = (number_x, number_y)
 
-    number_start_x = cursor_x + label_spacing
-    # --- main_label: 小班枝番部分 ---
-    if number is not None:
-        t = msp.add_text(
-            number,
-            rotation=label_rotation,
-            dxfattribs={
-                "height": main_addrs_number_size,
-                "style": jp_font_style_name,
-                "layer": "小班枝番レイヤー",
-            },
-        )
-        t.set_placement(
-            (number_start_x, cursor_y), align=TextEntityAlignment.BOTTOM_LEFT
-        )
-        cursor_x += text_width(main_addrs_number_size) * len(number)
+    # protection labels: draw circles and center the text inside
+    if protection_labels:
+        spacing = addrs_label_size * 0.9
+        total_width = (len(protection_labels) - 1) * spacing
+        start_x = x + total_width * 0.3
+        circle_radius = addrs_label_size * 0.9 * protection_label_scale
 
-    if sub_labels is None:
-        return
+        for index, label in enumerate(protection_labels):
+            px = start_x + index * spacing
+            py = y - addrs_label_size * 0.95
+            circle_center_x, circle_center_y = _rotate_point(px, py, x, y, rotation)
 
-    # --- sub_labels: 保安林短縮コードを左から順に並べる ---
-    sub_x = x + label_spacing
-    sub_y = y - label_spacing
+            # 文字ラベルは円の中心に完全に合わせて配置する。
+            # 文字の実際の見た目の中央に合わせるため、フォントの描画バウンディングボックスを使う。
+            text_center_x = circle_center_x
+            text_center_y = circle_center_y
 
-    for s in sub_labels:
-        t = msp.add_text(
-            s,
-            rotation=label_rotation,
-            dxfattribs={
-                "height": sub_label_size,
-                "style": jp_font_style_name,
-                "layer": "保安林文字レイヤー",
-            },
-        )
-        # 円の中心は TEXT の配置点そのもの
-
-        msp.add_circle((sub_x, sub_y), radius, dxfattribs={"layer": "保安林円レイヤー"})
-
-        # offsetを計算して、文字を円の中心に配置する
-        offset_x, offset_y = compute_visual_offset(
-            s, windows_font_path, sub_label_size, sub_label_size
-        )
-        t.set_placement(
-            (sub_x - offset_x, sub_y - offset_y),
-            align=TextEntityAlignment.MIDDLE_CENTER,
-        )
-
-        # 次の文字へ（直径＋間隔）
-        sub_x += radius + label_spacing
+            msp.add_circle((circle_center_x, circle_center_y), circle_radius)
+            th = addrs_label_size * protection_label_scale
+            t_ent = msp.add_text(
+                label,
+                dxfattribs={
+                    "height": th,
+                    "rotation": rotation,
+                    "style": "STANDARD",
+                },
+            )
+            if font_path:
+                offset_x, offset_y = compute_visual_offset(label, font_path, th, th)
+                text_center_x, text_center_y = _rotate_point(
+                    circle_center_x - offset_x,
+                    circle_center_y - offset_y,
+                    circle_center_x,
+                    circle_center_y,
+                    rotation,
+                )
+            try:
+                t_ent.set_placement(
+                    (text_center_x, text_center_y),
+                    align=TextEntityAlignment.MIDDLE_CENTER,
+                )
+            except Exception:
+                t_ent.dxf.insert = (text_center_x, text_center_y)
 
 
 class BaseDxf(pydantic.BaseModel):
@@ -241,7 +294,7 @@ class BaseDxf(pydantic.BaseModel):
     geometry_layer: str = "小班区画レイヤー"
     label_column: Optional[str] = "sub_address_name"
     label_size: int = 20
-    label_rotation: float = 0.0
+    label_rotation: int = 0
     label_layer: str = "小班区画ラベルレイヤー"
     model_config = pydantic.ConfigDict(
         validate_default=True,
@@ -373,10 +426,6 @@ class SubAddrsDxf(BaseDxf):
             保安林の短縮コードを描画するレイヤー名。デフォルトは "保安林コードレイヤー"。
         protection_mark_circle_layer(str, optional):
             保安林の短縮コードを円囲みで描画するレイヤー名。デフォルトは "保安林コード円レイヤー"。
-        protection_mark_offset_x_factor(float, optional):
-            保安林の短縮コードを円囲みで描画する際の、円の中心と文字の左下のX方向のオフセット係数。デフォルトは 0.6。
-        protection_mark_offset_y_factor(float, optional):
-            保安林の短縮コードを円囲みで描画する際の、円の中心と文字の左下のY方向のオフセット係数。デフォルトは 0.4。
 
     Example:
         ```python
@@ -392,9 +441,8 @@ class SubAddrsDxf(BaseDxf):
         ```
     """
 
+    label_size: int = 15
     protection_forest_mark: bool = True
-    protection_mark_offset_x_factor: float = 0.5
-    protection_mark_offset_y_factor: float = 0.4
 
     def _add_geometry(
         self,
@@ -422,14 +470,20 @@ class SubAddrsDxf(BaseDxf):
         if label is not None:
             # ラベルがある場合、Polygonと交差する点を取得してテキストを追加
             centroid = shapely.point_on_surface(geom)
-            draw_labels(
+            splited = split_sub_address_name(label)
+            kana = splited["kana"]
+            number = splited["number"]
+            add_sub_address_label(
                 modelspace,
                 centroid.x,
                 centroid.y,
-                main_label=label,
-                sub_labels=marks,
-                label_size=self.label_size,
-                label_rotation=self.label_rotation,
+                addrs_label=kana if kana is not None else "",
+                addrs_label_size=self.label_size,
+                rotation=self.label_rotation,
+                number_label=number if number is not None else "",
+                number_label_scale=0.5,
+                protection_labels=marks if marks is not None else [],
+                protection_label_scale=0.5,
             )
 
     def protection_marks(self) -> Optional[dict[int, Optional[list[str]]]]:

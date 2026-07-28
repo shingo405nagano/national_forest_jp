@@ -6,6 +6,8 @@ import pytest
 import shapely
 from ezdxf.enums import InsertUnits
 
+import nfj.dxf as dxf_module
+
 from ..dxf import BaseDxf, SubAddrsDxf
 from ..fields import AddressFields
 
@@ -85,6 +87,22 @@ def test_subaddrs_protection_marks_maps_known_code_and_missing_values():
 
     assert marks is not None
     assert marks[0] == ["水"]
+
+
+def test_compute_visual_offset_is_cached_for_repeat_calls(monkeypatch):
+    calls = 0
+
+    def fake_uncached(label, font_path, font_point_size, target_height):
+        nonlocal calls
+        calls += 1
+        return (1.0, 2.0)
+
+    monkeypatch.setattr(dxf_module, "_compute_visual_offset_uncached", fake_uncached)
+    dxf_module.compute_visual_offset.cache_clear()
+
+    assert dxf_module.compute_visual_offset("A", "dummy.ttf", 12, 20) == (1.0, 2.0)
+    assert dxf_module.compute_visual_offset("A", "dummy.ttf", 12, 20) == (1.0, 2.0)
+    assert calls == 1
 
 
 def test_subaddrs_add_geometries_splits_label_into_kana_and_number_parts():
