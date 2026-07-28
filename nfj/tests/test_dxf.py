@@ -120,6 +120,31 @@ def test_subaddrs_add_geometries_splits_label_into_kana_and_number_parts():
     assert [entity.dxf.height for entity in text_entities] == [15.0, 7.5]
 
 
+def test_subaddrs_add_geometries_uses_find_label_position_option(monkeypatch):
+    gdf = _build_subaddr_gdf()
+
+    def fake_cluster_center(geom):
+        return shapely.Point(10, 10)
+
+    def fail_point_on_surface(_geom):
+        raise AssertionError("point_on_surface should not be used")
+
+    monkeypatch.setattr(
+        dxf_module, "find_max_adjacent_cluster_center", fake_cluster_center
+    )
+    monkeypatch.setattr(dxf_module.shapely, "point_on_surface", fail_point_on_surface)
+
+    sub = SubAddrsDxf(gdf=gdf, find_label_position=True)
+    doc = ezdxf.new(dxfversion="R2010", units=InsertUnits.Meters)
+    msp = doc.modelspace()
+
+    sub.add_geometries(msp)
+
+    text_entities = [entity for entity in msp if entity.dxftype() == "TEXT"]
+    assert len(text_entities) == 2
+    assert text_entities[0].dxf.insert == (10.0, 10.0)
+
+
 def test_subaddrs_add_geometries_adds_label_and_protection_mark_entities():
     gdf = _build_subaddr_gdf(protection_values=["水涵保", "土流保", "-", "-"])
     sub = SubAddrsDxf(gdf=gdf, label_size=15)

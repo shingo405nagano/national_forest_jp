@@ -4,7 +4,7 @@ import re
 import tempfile
 import zipfile
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import ezdxf
 import fastkml
@@ -101,7 +101,7 @@ class GsicAddressShape(GsShapeFile):
     """
 
     def __init__(
-        self,  #
+        self,
         prefecture: str,
         year: int = 2025,
         endswith: str = ".shp",
@@ -357,7 +357,7 @@ class GsicAddressShape(GsShapeFile):
             q = " or ".join([self.__make_query_string(column, v) for v in value])
             return q
         elif isinstance(value, str):
-            return f"{column} == {repr(value)}"
+            return f"{column} == {value!r}"
         elif isinstance(value, int):
             return f"{column} == {value}"
 
@@ -776,7 +776,7 @@ class GsicAddressShape(GsShapeFile):
         gdf: gpd.GeoDataFrame,
         layer: str,
         alias: bool = False,
-        gpkg: Optional[GeoPackage] = None,
+        gpkg: GeoPackage | None = None,
         **kwargs: Any,
     ) -> GeoPackage:
         """
@@ -1274,7 +1274,10 @@ class GsicAddressShape(GsShapeFile):
             "sub_address_label_size", SubAddrsDxf().label_size * label_scale
         )
         sub_addrs_dxf = SubAddrsDxf(
-            gdf=gdf, label_size=sub_addrs_label_size, label_rotation=label_rotation
+            gdf=gdf,
+            label_size=sub_addrs_label_size,
+            label_rotation=label_rotation,
+            find_label_position=True,
         )
 
         gdfs: dict[str, Any] = {"小班区画": sub_addrs_dxf}

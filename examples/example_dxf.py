@@ -23,13 +23,14 @@ if __name__ == "__main__":
     # 1.データのダウンロード
     # ダウンロードする都道府県と計画区を指定し、GsicAddressShapeクラスのインスタンスを作成します。
     # インスタンス化の時点で、指定した都道府県の国有林データのダウンロードが開始されます。
-    pref = "東京都"
-    plan_area = "多摩森林計画区"
+    pref = "神奈川県"
+    plan_area = "神奈川森林計画区"
     output_path = Path(__file__).resolve().parent / "output.zip"
 
     shp = GsicAddressShape(prefecture=pref)
     try:
         gdf = shp.geodataframe(plan_area=plan_area)
+        gdf = shp.query(gdf, branch_office="箱根", locality="三国峠165番1")
         # 平面直角座標系に変換します
         gdf.to_crs(epsg=6677, inplace=True)
 

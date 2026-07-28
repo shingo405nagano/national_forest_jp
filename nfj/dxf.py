@@ -1,7 +1,7 @@
 import math
 from functools import lru_cache
 from importlib import resources
-from typing import Any, Optional
+from typing import Any
 
 import geopandas as gpd
 import pydantic
@@ -13,6 +13,7 @@ from PIL import Image, ImageDraw, ImageFont
 from .config import ProtectedForestCoding
 from .fields import AddressFields
 from .logging_config import setup_logger
+from .utils import find_max_adjacent_cluster_center
 
 logger = setup_logger(__name__)
 
@@ -30,7 +31,7 @@ def _resolve_font_path() -> str:
 windows_font_path = _resolve_font_path()
 
 
-def split_sub_address_name(sub_address_name: str) -> dict[str, Optional[str]]:
+def split_sub_address_name(sub_address_name: str) -> dict[str, str | None]:
     """
     小班名の文字列を分解し、ひらがな＆カタカナの部分と数字の部分に分ける関数
     Args:
@@ -85,7 +86,7 @@ def _compute_visual_offset_uncached(label, font_path, font_point_size, target_he
     sum_y = 0.0
     for y in range(canvas_h):
         for x in range(canvas_w):
-            if pixels[x, y] > 0:
+            if pixels[x, y] > 0:  # type: ignore
                 count += 1
                 sum_x += x
                 sum_y += y
@@ -229,12 +230,12 @@ def add_sub_address_label(
     if protection_labels:
         spacing = addrs_label_size * 0.9
         total_width = (len(protection_labels) - 1) * spacing
-        start_x = x + total_width * 0.3
+        start_x = x + total_width * 0.85
         circle_radius = addrs_label_size * 0.9 * protection_label_scale
 
         for index, label in enumerate(protection_labels):
             px = start_x + index * spacing
-            py = y - addrs_label_size * 0.95
+            py = y - addrs_label_size * 0.7
             circle_center_x, circle_center_y = _rotate_point(px, py, x, y, rotation)
 
             # 文字ラベルは円の中心に完全に合わせて配置する。
@@ -289,13 +290,14 @@ class BaseDxf(pydantic.BaseModel):
             DXFのラベルを追加するレイヤー名。デフォルトは "小班区画ラベルレイヤー"。
     """
 
-    gdf: Optional[gpd.GeoDataFrame] = None
+    gdf: gpd.GeoDataFrame | None = None
     geometry_column: str = "geometry"
     geometry_layer: str = "小班区画レイヤー"
-    label_column: Optional[str] = "sub_address_name"
+    label_column: str | None = "sub_address_name"
     label_size: int = 20
     label_rotation: int = 0
     label_layer: str = "小班区画ラベルレイヤー"
+    find_label_position: bool = False
     model_config = pydantic.ConfigDict(
         validate_default=True,
         arbitrary_types_allowed=True,
@@ -332,7 +334,7 @@ class BaseDxf(pydantic.BaseModel):
         self,
         modelspace: Modelspace,
         geom: shapely.geometry.Polygon,
-        label: Optional[str] = None,
+        label: str | None = None,
     ) -> None:
         # 外周の座標を取得し、座標をDXFのLWPolylineとして追加
         exterior_coords = list(geom.exterior.coords)
@@ -343,7 +345,11 @@ class BaseDxf(pydantic.BaseModel):
         )
         if label is not None:
             # ラベルがある場合、Polygonと交差する点を取得してテキストを追加
-            centroid = shapely.point_on_surface(geom)
+            if self.find_label_position:
+                centroid = find_max_adjacent_cluster_center(geom)
+            else:
+                centroid = shapely.point_on_surface(geom)
+
             modelspace.add_text(
                 label,
                 dxfattribs=self.label_dxf_attributes(),
@@ -443,13 +449,14 @@ class SubAddrsDxf(BaseDxf):
 
     label_size: int = 15
     protection_forest_mark: bool = True
+    find_label_position: bool = True
 
     def _add_geometry(
         self,
         modelspace: Modelspace,
         geom: shapely.geometry.Polygon,
-        label: Optional[str] = None,
-        marks: Optional[list[str]] = None,
+        label: str | None = None,
+        marks: list[str] | None = None,
     ) -> None:
         exterior_coords = list(geom.exterior.coords)
         modelspace.add_lwpolyline(
@@ -469,7 +476,10 @@ class SubAddrsDxf(BaseDxf):
 
         if label is not None:
             # ラベルがある場合、Polygonと交差する点を取得してテキストを追加
-            centroid = shapely.point_on_surface(geom)
+            if self.find_label_position:
+                centroid = find_max_adjacent_cluster_center(geom)
+            else:
+                centroid = shapely.point_on_surface(geom)
             splited = split_sub_address_name(label)
             kana = splited["kana"]
             number = splited["number"]
@@ -486,7 +496,7 @@ class SubAddrsDxf(BaseDxf):
                 protection_label_scale=0.5,
             )
 
-    def protection_marks(self) -> Optional[dict[int, Optional[list[str]]]]:
+    def protection_marks(self) -> dict[int, list[str] | None] | None:
         """
         小班区画に保安林が含まれている場合、保安林の種別に応じた短縮コードをリスト化して返します。
         保安林が含まれていない場合は None を返します。
@@ -591,7 +601,7 @@ class MainAddrsDxf(BaseDxf):
     """
 
     geometry_layer: str = "林班区画レイヤー"
-    label_column: Optional[str] = "main_address"
+    label_column: str | None = "main_address"
     label_size: int = 40
     label_layer: str = "林班区画ラベルレイヤー"
 
@@ -631,7 +641,7 @@ class LocalityDxf(BaseDxf):
     """
 
     geometry_layer: str = "国有林区画レイヤー"
-    label_column: Optional[str] = "locality"
+    label_column: str | None = "locality"
     label_size: int = 50
     label_layer: str = "国有林名ラベルレイヤー"
 
@@ -671,7 +681,7 @@ class BranchOfficeDxf(BaseDxf):
     """
 
     geometry_layer: str = "森林事務所レイヤー"
-    label_column: Optional[str] = "branch_office"
+    label_column: str | None = "branch_office"
     label_size: int = 70
     label_layer: str = "森林事務所区画ラベルレイヤー"
 
@@ -711,7 +721,7 @@ class OfficeDxf(BaseDxf):
     """
 
     geometry_layer: str = "森林管理署レイヤー"
-    label_column: Optional[str] = "office"
+    label_column: str | None = "office"
     label_size: int = 90
     label_layer: str = "森林管理署区画ラベルレイヤー"
 
@@ -750,6 +760,6 @@ class ProtectionForestDxf(BaseDxf):
     """
 
     geometry_layer: str = "保安林区画レイヤー"
-    label_column: Optional[str] = "protected_forest_type"
+    label_column: str | None = "protected_forest_type"
     label_size: int = 20
     label_layer: str = "保安林区画ラベルレイヤー"
