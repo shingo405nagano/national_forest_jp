@@ -280,7 +280,7 @@ def add_sub_address_label(
                     (text_center_x, text_center_y),
                     align=TextEntityAlignment.MIDDLE_CENTER,
                 )
-            except Exception:
+            except Exception:  # noqa: BLE001
                 t_ent.dxf.insert = (text_center_x, text_center_y)
 
 
@@ -557,7 +557,7 @@ class SubAddrsDxf(BaseDxf):
             logger.error(msg)
             raise ValueError(msg)
 
-        if self.label_column is not None:
+        if self.label_column is not None:  # noqa: SIM102
             if self.label_column not in self.gdf.columns:
                 msg = f"Label column '{self.label_column}' does not exist in the GeoDataFrame."
                 logger.error(msg)
