@@ -120,6 +120,21 @@ def test_subaddrs_add_geometries_splits_label_into_kana_and_number_parts():
     assert [entity.dxf.height for entity in text_entities] == [15.0, 7.5]
 
 
+@pytest.mark.parametrize("rotation", [0, 30])
+def test_subaddrs_add_geometries_uses_label_rotation_unchanged(rotation):
+    gdf = _build_subaddr_gdf()
+    sub = SubAddrsDxf(gdf=gdf, label_rotation=rotation)
+
+    doc = ezdxf.new(dxfversion="R2010", units=InsertUnits.Meters)
+    msp = doc.modelspace()
+    sub.add_geometries(msp)
+
+    text_entities = [entity for entity in msp if entity.dxftype() == "TEXT"]
+
+    assert len(text_entities) == 2
+    assert [entity.dxf.rotation for entity in text_entities] == [rotation, rotation]
+
+
 def test_subaddrs_add_geometries_uses_find_label_position_option(monkeypatch):
     gdf = _build_subaddr_gdf()
 

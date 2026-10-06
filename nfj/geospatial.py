@@ -1276,6 +1276,12 @@ class GsicAddressShape(GsShapeFile):
             io.BytesIO:
                 変換されたDXFファイルの内容をバイト列として保持するメモリ上のファイルオブジェクト。
         """
+        label_rotation = label_rotation * -1
+        if label_rotation < -180 or 180 < label_rotation:
+            raise ValueError(
+                f"label_rotation must be between -180 and 180 degrees. Got {label_rotation}."
+            )
+
         logger.info(
             "Start converting GeoDataFrame to DXF format and compressing to Zip."
         )

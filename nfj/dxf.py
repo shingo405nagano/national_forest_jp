@@ -166,7 +166,7 @@ def add_sub_address_label(
     y: float,
     addrs_label: str,
     addrs_label_size: float = 20,
-    rotation: float = -90,
+    rotation: float = 0,
     number_label: str = "",
     number_label_scale: float = 0.5,
     protection_labels: list[str] | None = None,
@@ -187,7 +187,7 @@ def add_sub_address_label(
         addrs_label_size (float, optional):
             林小班ラベルのフォントサイズ。デフォルトは20
         rotation (float, optional):
-            ラベル全体の回転角度（度単位）。デフォルトは-90
+            ラベル全体の回転角度（度単位）。デフォルトは0
         number_label (str, optional):
             小班枝番ラベルの文字列。デフォルトは空文字。このラベルは小班主番ラベルの右下に配置されます。
             例：'1'、'2'、'3'、'10' など
@@ -200,10 +200,6 @@ def add_sub_address_label(
         protection_label_scale (float, optional):
             保安林種ラベルのスケール。デフォルトは0.5。
     """
-    rotation += 90
-    if 360 < rotation:
-        rotation -= 360
-
     if protection_labels is None:
         protection_labels = []
     # main label
