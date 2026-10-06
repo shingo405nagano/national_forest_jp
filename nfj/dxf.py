@@ -242,8 +242,14 @@ def add_sub_address_label(
         start_x = x + total_width * 0.05
         circle_radius = addrs_label_size * 0.9 * protection_label_scale
 
-        for index, label in enumerate(protection_labels):
-            px = start_x + index * spacing
+        sub_scale = 0.6
+        cursor_x = start_x
+        for label in protection_labels:
+            px = cursor_x
+            cursor_x += spacing
+            main_char = label[0]
+            sub_char = label[1:2] if len(label) >= 2 else ""
+            label = main_char
             py = y - addrs_label_size * 0.9
             circle_center_x, circle_center_y = _rotate_point(px, py, x, y, rotation)
 
@@ -278,6 +284,33 @@ def add_sub_address_label(
                 )
             except Exception:  # noqa: BLE001
                 t_ent.dxf.insert = (text_center_x, text_center_y)
+
+            if sub_char:
+                # 二文字目は円の外側（右下）に小さく配置し、次のラベルをその分右へずらす
+                sub_h = th * sub_scale
+                if font_path:
+                    sub_w = _measure_text_width(sub_char, font_path, sub_h)
+                else:
+                    sub_w = sub_h
+                sub_x, sub_y = _rotate_point(
+                    px + circle_radius * 0.9,
+                    py - circle_radius * 1.0,
+                    x,
+                    y,
+                    rotation,
+                )
+                sub_ent = msp.add_text(
+                    sub_char,
+                    dxfattribs={
+                        "height": sub_h,
+                        "rotation": rotation,
+                        "style": "STANDARD",
+                    },
+                )
+                sub_ent.set_placement(
+                    (sub_x, sub_y), align=TextEntityAlignment.BOTTOM_LEFT
+                )
+                cursor_x += circle_radius * 0.5 + sub_w * 0.3 + addrs_label_size * 0.1
 
 
 class BaseDxf(pydantic.BaseModel):
@@ -525,6 +558,9 @@ class SubAddrsDxf(BaseDxf):
                 field.en
                 for field in addrs_fields.fields.values()
                 if "protection_forest" in field.en
+            ] + [
+                addrs_fields.field_info("conservation").en,
+                addrs_fields.field_info("green_corridor").en,
             ]
             # 保安林の種別に応じた短縮コードをリスト化して返す
             marks = {}
