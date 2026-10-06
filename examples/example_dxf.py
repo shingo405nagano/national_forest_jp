@@ -41,12 +41,12 @@ if __name__ == "__main__":
         dxf = shp.to_ziped_dxf(
             gdf,
             dxfversion="R2010",
-            label_rotation=0,
+            label_rotation=-45,
             main_address=True,
-            locality=True,
-            office=True,
-            branch_office=True,
-            protection_forests=True,
+            locality=False,
+            office=False,
+            branch_office=False,
+            protection_forests=False,
         )
 
         with open(output_path, "wb") as f:

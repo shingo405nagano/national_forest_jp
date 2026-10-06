@@ -17,9 +17,6 @@ from .utils import find_max_adjacent_cluster_center
 
 logger = setup_logger(__name__)
 
-global windows_font_path
-windows_font_path = None
-
 
 def _resolve_font_path() -> str:
     resource = resources.files("nfj").joinpath("others", "msgothic.ttc")
@@ -75,7 +72,7 @@ def _compute_visual_offset_uncached(label, font_path, font_point_size, target_he
     draw = ImageDraw.Draw(img)
 
     # ascent を使ってベースラインに合わせて描画
-    ascent, descent = font.getmetrics()
+    ascent, _descent = font.getmetrics()
     draw_y = baseline_y - ascent
     draw.text((baseline_x, draw_y), label, font=font, fill=255)
 
@@ -134,6 +131,15 @@ def _rotate_point(
     )
 
 
+def _measure_text_width(label: str, font_path: str, target_height: float) -> float:
+    scale = 6
+    font = ImageFont.truetype(font_path, max(1, int(target_height * scale)))
+    ascent, _ = font.getmetrics()
+    if ascent == 0:
+        return 0.0
+    return font.getlength(label) * target_height / ascent
+
+
 def _add_text_entity(
     msp, text: str, x: float, y: float, height: float, rotation: float = 0
 ):
@@ -147,12 +153,10 @@ def _add_text_entity(
             "style": "STANDARD",
         },
     )
-    try:
-        # Use centered placement when available
-        text_entity.set_pos((x, y), align="MIDDLE_CENTER")
-    except Exception:
-        # Fallback: set insert point
-        text_entity.dxf.insert = (x, y)
+    text_entity.set_placement(
+        (x, y),
+        align=TextEntityAlignment.MIDDLE_CENTER,
+    )
     return text_entity
 
 
@@ -162,7 +166,7 @@ def add_sub_address_label(
     y: float,
     addrs_label: str,
     addrs_label_size: float = 20,
-    rotation: float = 0,
+    rotation: float = -90,
     number_label: str = "",
     number_label_scale: float = 0.5,
     protection_labels: list[str] | None = None,
@@ -183,7 +187,7 @@ def add_sub_address_label(
         addrs_label_size (float, optional):
             林小班ラベルのフォントサイズ。デフォルトは20
         rotation (float, optional):
-            ラベル全体の回転角度（度単位）。デフォルトは0
+            ラベル全体の回転角度（度単位）。デフォルトは-90
         number_label (str, optional):
             小班枝番ラベルの文字列。デフォルトは空文字。このラベルは小班主番ラベルの右下に配置されます。
             例：'1'、'2'、'3'、'10' など
@@ -196,6 +200,9 @@ def add_sub_address_label(
         protection_label_scale (float, optional):
             保安林種ラベルのスケール。デフォルトは0.5。
     """
+    rotation += 90
+    if 360 < rotation:
+        rotation -= 360
 
     if protection_labels is None:
         protection_labels = []
@@ -204,8 +211,14 @@ def add_sub_address_label(
 
     # number (枝番): place to the right/top-right of the main label
     if number_label:
-        number_local_x = addrs_label_size * 1.3
-        number_local_y = -addrs_label_size * 0.2
+        if font_path:
+            main_label_width = _measure_text_width(
+                addrs_label, font_path, addrs_label_size
+            )
+        else:
+            main_label_width = len(addrs_label) * addrs_label_size
+        number_local_x = main_label_width / 2 + addrs_label_size * 0.8
+        number_local_y = -addrs_label_size * 0.4
         number_x, number_y = _rotate_point(
             x + number_local_x,
             y + number_local_y,
@@ -221,21 +234,21 @@ def add_sub_address_label(
                 "style": "STANDARD",
             },
         )
-        try:
-            num_ent.set_pos((number_x, number_y), align="BOTTOM_RIGHT")
-        except Exception:
-            num_ent.dxf.insert = (number_x, number_y)
+        num_ent.set_placement(
+            (number_x, number_y),
+            align=TextEntityAlignment.BOTTOM_LEFT,
+        )
 
     # protection labels: draw circles and center the text inside
     if protection_labels:
         spacing = addrs_label_size * 0.9
         total_width = (len(protection_labels) - 1) * spacing
-        start_x = x + total_width * 0.85
+        start_x = x + total_width * 0.05
         circle_radius = addrs_label_size * 0.9 * protection_label_scale
 
         for index, label in enumerate(protection_labels):
             px = start_x + index * spacing
-            py = y - addrs_label_size * 0.7
+            py = y - addrs_label_size * 0.9
             circle_center_x, circle_center_y = _rotate_point(px, py, x, y, rotation)
 
             # 文字ラベルは円の中心に完全に合わせて配置する。
